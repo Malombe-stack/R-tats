@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+from ingestion.loader import load_csv
 from ingestion.validator import ValidationError, validate_ohlcv
 
 
@@ -40,3 +41,26 @@ def test_tc06_missing_numeric(valid_data: pd.DataFrame) -> None:
     invalid.loc[0, "Close"] = None
     with pytest.raises(ValidationError):
         validate_ohlcv(invalid)
+
+
+def test_flat_and_raw_yfinance_csv_formats_load_cleanly(tmp_path) -> None:
+    flat = tmp_path / "flat.csv"
+    flat.write_text(
+        "Date,Open,High,Low,Close,Volume\n"
+        "2024-01-02,10,11,9,10.5,100\n",
+        encoding="utf-8",
+    )
+    raw = tmp_path / "raw.csv"
+    raw.write_text(
+        "Price,Close,High,Low,Open,Volume\n"
+        "Ticker,SPY,SPY,SPY,SPY,SPY\n"
+        "Date,,,,,\n"
+        "2024-01-02,10.5,11,9,10,100\n",
+        encoding="utf-8",
+    )
+
+    flat_data, _ = load_csv(flat)
+    raw_data, _ = load_csv(raw)
+
+    assert list(flat_data.columns) == ["Date", "Open", "High", "Low", "Close", "Volume"]
+    pd.testing.assert_frame_equal(flat_data, raw_data)

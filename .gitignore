@@ -18,6 +18,7 @@ data/*.sqlite
 data/*.sqlite3
 data/processed/*
 !data/processed/.gitkeep
+!data/samples/*.csv
 
 # Operating-system files
 .DS_Store

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ DISCLAIMER = (
     "guarantee future returns. No live trading is supported."
 )
 DATA_DIR = PROJECT_ROOT / "data"
-SAMPLE_PATH = DATA_DIR / "samples" / "NSE_SAMPLE_DAILY.csv"
+SAMPLES_DIR = DATA_DIR / "samples"
 PROCESSED_DIR = DATA_DIR / "processed"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,6 +37,12 @@ def _metric_text(value: Any, notes: dict[str, str], name: str) -> str:
     return f"{value:.4f}"
 
 
+def _instrument_from_filename(path: Path) -> str:
+    """Infer a display instrument code from a bundled dataset filename."""
+    name = re.sub(r"_(?:\d+Y|SAMPLE)_DAILY$", "", path.stem)
+    return name.replace("_NR", ".NR")
+
+
 def main() -> None:
     """Render the dashboard."""
     st.set_page_config(page_title="R-TATS", layout="wide")
@@ -44,7 +51,18 @@ def main() -> None:
     with st.sidebar:
         st.header("Simulation configuration")
         uploaded = st.file_uploader("Upload OHLCV CSV", type="csv")
-        path = st.text_input("Bundled CSV path", str(SAMPLE_PATH))
+        bundled_paths = sorted(SAMPLES_DIR.glob("*.csv"))
+        selected_path = st.selectbox(
+            "Bundled dataset",
+            bundled_paths,
+            format_func=lambda path: path.name,
+            disabled=not bundled_paths,
+        )
+        instrument = (
+            _instrument_from_filename(selected_path)
+            if selected_path and uploaded is None
+            else ""
+        )
         strategy = st.selectbox("Strategy", ["sma", "ema", "rsi"])
         initial_cash = st.number_input("Initial capital", min_value=1.0, value=10000.0)
         commission = st.number_input("Commission (%)", min_value=0.0, value=0.1) / 100
@@ -74,8 +92,8 @@ def main() -> None:
                 handle.write(uploaded.getvalue())
                 source = handle.name
         else:
-            source = path
-        data, metadata = load_csv(source)
+            source = selected_path
+        data, metadata = load_csv(source, instrument=instrument)
         result = run_backtest(
             data, strategy, initial_cash, commission, slippage, parameters,
             position_size_pct=position_size_pct,
