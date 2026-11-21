@@ -29,8 +29,12 @@ class RSIMeanReversionStrategy(BaseStrategy):
         self.record_equity()
         if self.order:
             return
-        if not self.position and self.rsi < self.p.oversold and self.position_size() > 0:
-            self.order = self.buy(size=self.position_size())
+        if not self.position and self.rsi < self.p.oversold:
+            size = self.position_size()
+            if size > 0:
+                self.order = self.buy(size=size)
+            else:
+                self.record_risk_rejection("Position size is zero: insufficient capital or price constraint.")
         elif self.position and self.rsi > self.p.overbought:
             self.order = self.close()
 

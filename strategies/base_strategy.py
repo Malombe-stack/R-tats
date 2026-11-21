@@ -32,6 +32,14 @@ class BaseStrategy(bt.Strategy):
         price = float(self.data.close[0])
         return float(int(self.broker.getcash() * self.p.position_size_pct / price))
 
+    def record_risk_rejection(self, reason: str) -> None:
+        """Record a signal blocked before an order is submitted."""
+        date = self.data.datetime.date(0).isoformat()
+        self.order_log.append({
+            "date": date, "timestamp": date,
+            "side": "BUY", "status": "Risk Rejected", "reason": reason,
+        })
+
     def notify_order(self, order: bt.Order) -> None:
         """Record completed, cancelled, or rejected orders."""
         if order.status in (order.Submitted, order.Accepted):
