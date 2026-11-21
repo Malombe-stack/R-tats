@@ -18,57 +18,22 @@ def calculate_metrics(
     risk_free_rate: float = 0.0,
 ) -> dict[str, Any]:
     """Calculate standard metrics, returning ``None`` for undefined values."""
-    try:
-        initial_cash = float(initial_cash)
-    except (TypeError, ValueError, OverflowError):
-        raise ValueError("Initial cash must be positive.")
-    try:
-        annualization_factor = int(annualization_factor)
-    except (TypeError, ValueError, OverflowError):
-        annualization_factor = 0
-    if not isfinite(initial_cash) or initial_cash <= 0:
+    if initial_cash <= 0:
         raise ValueError("Initial cash must be positive.")
     if annualization_factor <= 0:
         raise ValueError("Annualization factor must be positive.")
-    def _safe_row_number(row: Any, keys: tuple[str, ...], fallback: float) -> float:
-        if not isinstance(row, dict):
-            return fallback
-        for key in keys:
-            if key in row:
-                try:
-                    number = float(row[key])
-                    if isfinite(number):
-                        return number
-                except (TypeError, ValueError, OverflowError):
-                    pass
-        return fallback
-
-    equity_rows = equity_curve if equity_curve is not None else ()
-    trade_rows = trades if trades is not None else ()
     values = np.asarray(
-        [_safe_row_number(row, ("value", "portfolio_value"), initial_cash)
-         for row in equity_rows], dtype=float
+        [float(row.get("value", row.get("portfolio_value", initial_cash)))
+         for row in equity_curve], dtype=float
     )
     values = values[np.isfinite(values)]
-    pnl_values: list[float] = []
-    for row in trade_rows:
-        if not isinstance(row, dict):
-            continue
-        if not (
-            str(row.get("status", "Closed")).lower() in {"closed", "completed"}
-            or "status" not in row
-        ):
-            continue
-        for key in ("pnl_net", "profit_loss"):
-            if key in row:
-                try:
-                    pnl = float(row[key])
-                except (TypeError, ValueError, OverflowError):
-                    pnl = float("nan")
-                if isfinite(pnl):
-                    pnl_values.append(pnl)
-                break
-    pnls = np.asarray(pnl_values, dtype=float)
+    pnls = np.asarray(
+        [float(row.get("pnl_net", row.get("profit_loss", 0.0)))
+         for row in trades
+         if str(row.get("status", "Closed")).lower() in {"closed", "completed"}
+         or "status" not in row],
+        dtype=float,
+    )
     pnls = pnls[np.isfinite(pnls)]
     if len(values) > 1:
         previous = values[:-1]
@@ -101,13 +66,7 @@ def calculate_metrics(
         max_drawdown = float(np.max(drawdowns) * 100) if len(drawdowns) else 0.0
     else:
         max_drawdown = 0.0
-    try:
-        final_value_number = float(final_value)
-    except (TypeError, ValueError):
-        final_value_number = initial_cash
-    if not isfinite(final_value_number):
-        final_value_number = initial_cash
-    total_change = (final_value_number - initial_cash) / initial_cash * 100
+    total_change = (final_value - initial_cash) / initial_cash * 100
     if not isfinite(total_change):
         total_change = 0.0
     return {

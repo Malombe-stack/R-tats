@@ -48,14 +48,12 @@ def normalize_cleaning_result(value: object) -> CleaningResult:
         data = value.data if isinstance(value.data, pd.DataFrame) else pd.DataFrame()
         issues = tuple(str(item) for item in (value.issues or ()) if item is not None)
         actions = tuple(str(item) for item in (value.actions or ()) if item is not None)
-        source_count = _safe_count(value.source_row_count, len(data))
-        usable_count = _safe_count(value.usable_row_count, len(data))
         return CleaningResult(
             data=data,
             issues=issues,
             actions=actions,
-            source_row_count=source_count,
-            usable_row_count=usable_count,
+            source_row_count=_safe_count(value.source_row_count, len(data)),
+            usable_row_count=_safe_count(value.usable_row_count, len(data)),
         )
     if isinstance(value, dict):
         data = value.get("data")

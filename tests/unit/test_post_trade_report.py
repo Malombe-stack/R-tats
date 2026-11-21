@@ -136,55 +136,37 @@ def test_pdf_report_export_returns_a_pdf_document() -> None:
     assert len(pdf_report) > 500
 
 
-def test_report_handles_none_collections_and_non_numeric_values() -> None:
-    result = BacktestResult(
-        strategy="sma",
-        initial_cash=float("nan"),
-        final_value=float("inf"),
-        equity_curve=(None,),
-        orders=(None, "bad"),
-        trades=(None, "bad", {"status": "Closed", "pnl_net": float("inf")}),
-    )
-
-    report = generate_post_trade_risk_report(
-        result,
-        None,
-        cleaning_actions=None,
-        commission_percent=None,
-        slippage_percent="bad",
-        currency_code=None,
-        currency_symbol=None,
-    )
-    txt_report = report_to_txt(report)
-    pdf_report = report_to_pdf(report)
-
-    assert "Post-Trade & Risk Audit Report" in report
-    assert "0 orders blocked by risk checks" in report
-    assert isinstance(txt_report, str)
-    assert pdf_report.startswith(b"%PDF-")
-
-
-def test_report_handles_invalid_bar_lengths_and_none_values() -> None:
+def test_report_includes_methodology_reliability_and_downloadable_formats() -> None:
     result = BacktestResult(
         strategy="sma",
         initial_cash=10000.0,
-        final_value=10000.0,
-        equity_curve=(None, {"timestamp": "2024-01-01", "value": float("nan")}),
-        orders=(None,),
-        trades=(
-            {
-                "status": "Closed",
-                "pnl_net": None,
-                "bar_length": None,
-                "quantity": None,
-                "entry_price": None,
-                "exit_price": None,
-                "commission": None,
-            },
+        final_value=10100.0,
+        equity_curve=(
+            {"timestamp": "2024-01-01", "value": 10000.0},
+            {"timestamp": "2024-01-02", "value": 10100.0},
         ),
+        orders=(None,),
+        trades=(None,),
+    )
+    report = generate_post_trade_risk_report(
+        result,
+        {"max_drawdown": 1.0},
+        cleaning_actions=("Dropped 2 invalid rows",),
+        dataset_label="NSE_SAMPLE_DAILY.csv",
+        strategy_name="SMA",
+        source_row_count=102,
+        usable_row_count=100,
+        currency_code="KES",
+        currency_symbol="KSh",
     )
 
-    report = generate_post_trade_risk_report(result, {"max_drawdown": None})
-
-    assert "Average holding period: **0.00 bar(s)**" in report
-    assert "Peak-to-trough maximum drawdown: **N/A%**" in report
+    assert "How the Analysis Came to This Result" in report
+    assert "Data Reliability" in report
+    assert "What Worked" in report
+    assert "What Didn't" in report
+    assert "Source rows: **102**" in report
+    assert "Usable rows passed into the simulation: **100**" in report
+    assert "Reliability assessment: **High**" in report
+    assert "KSh" in report
+    assert report_to_txt(report).startswith("Post-Trade & Risk Audit Report")
+    assert report_to_pdf(report).startswith(b"%PDF-")

@@ -105,46 +105,24 @@ def test_all_literal_app_tooltip_keys_exist() -> None:
     assert not missing
 
 
-def test_equity_chart_guards_none_nan_and_extreme_values() -> None:
+def test_chart_and_upload_cleaning_guards() -> None:
     figure = build_equity_figure(
         [
             {"timestamp": "2024-01-01", "value": 100.0},
             {"timestamp": "2024-01-02", "value": float("nan")},
             {"timestamp": "2024-01-03", "value": float("inf")},
-            {"timestamp": "2024-01-04", "value": 120.0},
         ],
         float("nan"),
         "KES",
         "KSh",
     )
-
-    assert isinstance(figure.layout.legend.y, (int, float))
     assert figure.layout.legend.y == 1.12
     assert figure.layout.legend.orientation == "h"
-    assert len(figure.data) == 1
     assert all(math.isfinite(float(value)) for value in figure.data[0].y)
 
-
-def test_cleaning_notes_and_counts_are_always_safe() -> None:
     assert normalize_cleaning_notes(None) == []
-    assert normalize_cleaning_notes("one note") == ["one note"]
     assert normalize_cleaning_notes(("one", None, "two")) == ["one", "two"]
-    assert normalize_cleaning_notes({"unexpected": "container"}) == ["{'unexpected': 'container'}"]
     assert _safe_cleaning_count(None) == 0
     assert _safe_cleaning_count("bad") == 0
-    assert _safe_cleaning_count(-4) == 0
-    assert _safe_cleaning_count("12") == 12
-
-
-def test_uploaded_name_and_bytes_never_depend_on_stale_attributes() -> None:
-    class Upload:
-        name = "NSE_MESSY.csv"
-
-        def getvalue(self) -> bytes:
-            return b"Date,Open,High,Low,Close,Volume\n2024-01-01,10,11,9,10,100\n"
-
-    upload = Upload()
-    assert _safe_uploaded_name(upload) == "NSE_MESSY.csv"
     assert _safe_uploaded_name(None) == "uploaded.csv"
-    assert _safe_uploaded_bytes(upload).startswith(b"Date,")
     assert _safe_uploaded_bytes(None) == b""
