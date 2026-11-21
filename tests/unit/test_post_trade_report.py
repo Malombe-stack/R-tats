@@ -66,3 +66,28 @@ def test_report_states_no_risk_rejections() -> None:
     assert "`0 orders blocked by risk checks`" in report
     assert "No executed trades" in report
     assert "no auto-cleaning actions" in report
+
+
+def test_report_flags_high_commission_stress() -> None:
+    result = BacktestResult(
+        strategy="sma",
+        initial_cash=10000.0,
+        final_value=8000.0,
+        equity_curve=(
+            {"timestamp": "2024-01-01", "value": 10000.0},
+            {"timestamp": "2024-01-02", "value": 8000.0},
+        ),
+        orders=(),
+        trades=(),
+    )
+
+    report = generate_post_trade_risk_report(
+        result,
+        {"max_drawdown": 20.0},
+        commission_percent=20.0,
+        slippage_percent=100.0,
+    )
+
+    assert "Commission: **20.00%**" in report
+    assert "Slippage: **100.00%**" in report
+    assert "High-Cost Stress Test" in report

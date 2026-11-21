@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from analytics.metrics import calculate_metrics
 from analytics.post_trade_report import generate_post_trade_risk_report
+from app.help_text import tooltip
 from backtesting.runner import run_backtest
 from ingestion.cleaner import CleaningResult, clean_ohlcv_csv
 from ingestion.loader import load_csv
@@ -107,7 +108,11 @@ def main() -> None:
     with st.sidebar:
         st.header("Simulation Configuration")
         st.caption("Upload OHLCV data or use a bundled deterministic dataset.")
-        uploaded = st.file_uploader("Upload OHLCV CSV", type="csv")
+        uploaded = st.file_uploader(
+            "Upload OHLCV CSV",
+            type="csv",
+            help=tooltip("upload"),
+        )
         if uploaded is not None:
             uploaded_cleaning = clean_ohlcv_csv(uploaded.getvalue())
             if uploaded_cleaning.issues:
@@ -135,7 +140,7 @@ def main() -> None:
             bundled_paths,
             format_func=lambda path: path.name,
             disabled=not bundled_paths,
-            help="Used only when no uploaded CSV is selected.",
+            help=tooltip("dataset"),
         )
         instrument = (
             _instrument_from_filename(selected_path)
@@ -147,39 +152,76 @@ def main() -> None:
             "Strategy",
             ["sma", "ema", "rsi"],
             label_visibility="collapsed",
+            help=tooltip("strategy"),
         )
         st.subheader("Capital & Costs")
         initial_cash = st.number_input(
-            "Initial capital", min_value=1.0, value=10000.0,
-            help="Starting simulated portfolio capital.",
+            "Initial capital",
+            min_value=1.0,
+            max_value=1e12,
+            value=10000.0,
+            help=tooltip("initial_capital"),
         )
-        commission = st.number_input(
-            "Commission (%)", min_value=0.0, value=0.1,
-            help="Per-execution simulated commission percentage.",
-        ) / 100
-        slippage = st.number_input(
-            "Slippage (%)", min_value=0.0, value=0.05,
-            help="Simulated percentage slippage applied by Backtrader.",
-        ) / 100
+        commission_percent = st.number_input(
+            "Commission (%)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=0.1,
+            step=1.0,
+            help=tooltip("commission"),
+        )
+        commission = commission_percent / 100
+        slippage_percent = st.number_input(
+            "Slippage (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=0.05,
+            step=1.0,
+            help=tooltip("slippage"),
+        )
+        slippage = slippage_percent / 100
+        if commission_percent >= 20.0 or slippage_percent >= 20.0:
+            st.warning(
+                "High-cost stress test active: heavy commission/slippage may erode PnL and returns."
+            )
         position_size_pct = st.number_input(
             "Position size (%)",
             min_value=1.0,
             max_value=100.0,
             value=95.0,
-            help="Maximum percentage of available cash allocated to a position.",
+            help=tooltip("position_size"),
         ) / 100
         if strategy in {"sma", "ema"}:
-            fast = st.number_input("Fast period", min_value=1, value=10)
-            slow = st.number_input("Slow period", min_value=2, value=30)
+            fast = st.number_input(
+                "Fast period", min_value=1, value=10, help=tooltip("fast_period"),
+            )
+            slow = st.number_input(
+                "Slow period", min_value=2, value=30, help=tooltip("slow_period"),
+            )
+            st.caption(f"? SMA: {tooltip('sma')}")
+            st.caption(f"EMA: {tooltip('ema')}")
             parameters = {"fast_period": fast, "slow_period": slow}
         else:
-            period = st.number_input("RSI period", min_value=2, value=14)
-            oversold = st.number_input("Oversold", min_value=0.1, max_value=49.9, value=30.0)
-            overbought = st.number_input("Overbought", min_value=50.1, max_value=99.9, value=70.0)
+            period = st.number_input(
+                "RSI period", min_value=2, value=14, help=tooltip("rsi_period"),
+            )
+            oversold = st.number_input(
+                "Oversold", min_value=0.1, max_value=49.9, value=30.0,
+                help=tooltip("oversold"),
+            )
+            overbought = st.number_input(
+                "Overbought", min_value=50.1, max_value=99.9, value=70.0,
+                help=tooltip("overbought"),
+            )
+            st.caption(f"? RSI: {tooltip('rsi')}")
             parameters = {
                 "rsi_period": period, "oversold": oversold, "overbought": overbought
             }
-        run = st.button("Run Backtest", type="primary")
+        run = st.button(
+            "Run Backtest",
+            type="primary",
+            help="Run the existing deterministic simulation with these labeled parameters.",
+        )
         auto_clean_run = (
             st.button("Clean, organize, and run", type="secondary")
             if uploaded is not None
@@ -246,13 +288,23 @@ def main() -> None:
         "Profit Factor",
         "Completed Trades",
     )
-    for column, name, label in zip(columns, kpi_names, kpi_labels):
+    kpi_help_names = (
+        "total_return",
+        "sharpe_ratio",
+        "max_drawdown",
+        "win_rate",
+        "profit_factor",
+        "completed_trades",
+    )
+    for column, name, label, help_name in zip(
+        columns, kpi_names, kpi_labels, kpi_help_names
+    ):
         value = metrics[name]
         if value is None:
             display_value = f"N/A — {notes.get(name, 'undefined')}"
         else:
             display_value = _kpi_value(value, name)
-        column.metric(label, display_value, help=f"{label} calculated for this simulation.")
+        column.metric(label, display_value, help=tooltip(help_name))
     equity = pd.DataFrame(result.equity_curve) if result.equity_curve else None
     if equity is not None:
         figure = go.Figure(
@@ -281,14 +333,42 @@ def main() -> None:
         )
         st.markdown('<div class="rt-section"></div>', unsafe_allow_html=True)
         st.subheader("Equity Curve")
+        st.caption(
+            f"Equity Curve ? {tooltip('equity_curve')} "
+            "The horizontal reference is Initial capital (non-percentage capital units)."
+        )
         st.plotly_chart(figure, use_container_width=True)
     st.subheader("Simulated trade log")
-    st.dataframe(result.trades, use_container_width=True)
+    st.caption(
+        "Trade log fields are non-percentage values. "
+        "entry/exit time is a date; quantity is shares; prices and PnL fields are capital units."
+    )
+    trade_frame = pd.DataFrame(result.trades)
+    st.dataframe(
+        trade_frame,
+        use_container_width=True,
+        column_config={
+            "entry_time": st.column_config.TextColumn("entry_time", help=tooltip("entry_time")),
+            "exit_time": st.column_config.TextColumn("exit_time", help=tooltip("exit_time")),
+            "side": st.column_config.TextColumn("side", help="LONG entry or exit side (non-percentage label)."),
+            "quantity": st.column_config.NumberColumn("quantity", help=tooltip("quantity"), format="%.4f"),
+            "entry_price": st.column_config.NumberColumn("entry_price", help=tooltip("entry_price"), format="$%.4f"),
+            "exit_price": st.column_config.NumberColumn("exit_price", help=tooltip("exit_price"), format="$%.4f"),
+            "commission": st.column_config.NumberColumn("commission", help=tooltip("commission_field"), format="$%.4f"),
+            "profit_loss": st.column_config.NumberColumn("profit_loss", help=tooltip("pnl"), format="$%.4f"),
+            "pnl": st.column_config.NumberColumn("pnl", help=tooltip("pnl"), format="$%.4f"),
+            "pnl_net": st.column_config.NumberColumn("pnl_net", help=tooltip("pnl_net"), format="$%.4f"),
+            "status": st.column_config.TextColumn("status", help="Trade lifecycle status (non-percentage label)."),
+            "bar_length": st.column_config.NumberColumn("bar_length", help=tooltip("bar_length"), format="%d"),
+        },
+    )
 
     report = generate_post_trade_risk_report(
         result,
         metrics,
         cleaning_actions=cleaning_notes,
+        commission_percent=commission_percent,
+        slippage_percent=slippage_percent,
     )
     st.subheader("Post-Trade & Risk Audit Report")
     st.markdown(report)

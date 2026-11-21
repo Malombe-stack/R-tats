@@ -26,6 +26,7 @@ def calculate_metrics(
         [float(row.get("value", row.get("portfolio_value", initial_cash)))
          for row in equity_curve], dtype=float
     )
+    values = values[np.isfinite(values)]
     pnls = np.asarray(
         [float(row.get("pnl_net", row.get("profit_loss", 0.0)))
          for row in trades
@@ -33,7 +34,13 @@ def calculate_metrics(
          or "status" not in row],
         dtype=float,
     )
-    returns = np.diff(values) / values[:-1] if len(values) > 1 else np.array([])
+    if len(values) > 1:
+        previous = values[:-1]
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            returns = np.diff(values) / np.where(previous != 0, previous, np.nan)
+        returns = returns[np.isfinite(returns)]
+    else:
+        returns = np.array([])
     wins = pnls[pnls > 0]
     losses = pnls[pnls < 0]
     notes: dict[str, str] = {}

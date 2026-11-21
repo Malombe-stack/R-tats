@@ -54,6 +54,8 @@ def generate_post_trade_risk_report(
     result: Any,
     metrics: dict[str, Any],
     cleaning_actions: Iterable[str] = (),
+    commission_percent: float = 0.0,
+    slippage_percent: float = 0.0,
 ) -> str:
     """Generate a Markdown audit report without changing simulation data."""
     trades = _closed_trades(result.trades)
@@ -85,9 +87,15 @@ def generate_post_trade_risk_report(
     lines = [
         "# Post-Trade & Risk Audit Report",
         "",
+        "## Run Parameters",
+        f"- Commission: **{commission_percent:.2f}%** (percentage; applied per execution).",
+        f"- Slippage: **{slippage_percent:.2f}%** (percentage; simulated execution friction).",
+        f"- Initial capital: **{_number(result.initial_cash)}** (non-percentage capital units).",
+        f"- Total net profit/loss: **{_number(total_net)}** (non-percentage capital units).",
+        "",
         "## What Worked",
         f"- {len(winning)} profitable trade(s) from {len(trades)} completed trade(s).",
-        f"- Total net profit after commission: **{_number(total_net)}**.",
+        f"- Total net PnL after commission and slippage: **{_number(total_net)}**.",
         f"- Average holding period: **{average_bars:.2f} bar(s)**.",
     ]
     if strongest is not None:
@@ -121,6 +129,14 @@ def generate_post_trade_risk_report(
         lines.append(f"- Flat or idle equity periods: {descriptions}.")
     else:
         lines.append("- No extended flat equity period (3 or more consecutive unchanged bars) was detected.")
+
+    if commission_percent >= 20.0 or slippage_percent >= 20.0:
+        lines.extend([
+            "",
+            "## High-Cost Stress Test",
+            "- **Stress-test note:** 20% or higher commission/slippage was applied.",
+            "- The high-cost setting may significantly erode net PnL and returns; results are deterministic simulation outputs.",
+        ])
 
     lines.extend(["", "## Executed Buys & Sells", "", "| Side | Entry | Exit | Quantity | Entry Price | Exit Price | Commission | Net PnL | Status |"])
     lines.append("|---|---|---|---:|---:|---:|---:|---:|---|")

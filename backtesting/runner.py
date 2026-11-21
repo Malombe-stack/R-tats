@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any, Type
 
 import backtrader as bt
@@ -54,6 +55,8 @@ def run_backtest(
     """Run a deterministic event-driven simulation."""
     if strategy not in STRATEGIES:
         raise ValueError(f"Unknown strategy {strategy!r}; choose from {sorted(STRATEGIES)}.")
+    if not isfinite(initial_cash) or not isfinite(commission) or not isfinite(slippage):
+        raise ValueError("Cash and cost parameters must be finite numeric values.")
     if initial_cash <= 0 or commission < 0 or slippage < 0:
         raise ValueError("Cash must be positive and costs must be non-negative.")
     if not 0 < position_size_pct <= 1:

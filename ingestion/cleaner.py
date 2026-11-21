@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from io import BytesIO, StringIO
+from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
@@ -55,6 +55,8 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
         target = _ALIASES.get(normalized)
         if target is not None:
             renamed[column] = target
+            if str(column).strip() != target:
+                issues.append(f"Column alias `{column}` was normalized to `{target}`.")
     if renamed:
         frame = frame.rename(columns=renamed)
 
@@ -81,12 +83,17 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
     malformed_dates = int(parsed.isna().sum())
     if malformed_dates:
         issues.append(f"{malformed_dates} row(s) contain unparsed timestamps.")
+    if parsed.notna().sum() > 1 and not parsed.dropna().is_monotonic_increasing:
+        issues.append("Timestamps were unsorted.")
     frame["Date"] = parsed
 
     numeric_columns = ("Open", "High", "Low", "Close", "Volume")
     for column in numeric_columns:
+        raw_strings = frame[column].astype("string")
+        if raw_strings.str.contains(r"[$,\s]", regex=True).fillna(False).any():
+            issues.append(f"{column} contains formatted numeric text (currency symbol, commas, or whitespace).")
         sanitized = (
-            frame[column].astype("string").str.strip()
+            raw_strings.str.strip()
             .str.replace(r"[$,\s]", "", regex=True)
             .str.replace(r"\((.*)\)", r"-\1", regex=True)
         )
