@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Final
 
 import pandas as pd
@@ -44,7 +45,7 @@ def validate_ohlcv(
     data: pd.DataFrame,
     duplicate_policy: str = "raise",
     *,
-    cleaning_notes: list[str] | None = None,
+    cleaning_notes: Iterable[str] | str | None = None,
 ) -> pd.DataFrame:
     """Normalize and validate an OHLCV frame without mutating its input.
 
@@ -57,7 +58,15 @@ def validate_ohlcv(
         raise ValidationError("Dataset is empty or contains no usable records.")
     if duplicate_policy not in {"raise", "drop_first"}:
         raise ValueError("duplicate_policy must be 'raise' or 'drop_first'.")
-    notes = cleaning_notes if cleaning_notes is not None else []
+    if isinstance(cleaning_notes, list):
+        cleaning_notes[:] = [str(note) for note in cleaning_notes if note is not None]
+        notes = cleaning_notes
+    elif isinstance(cleaning_notes, str):
+        notes = [cleaning_notes]
+    elif isinstance(cleaning_notes, Iterable):
+        notes = [str(note) for note in cleaning_notes if note is not None]
+    else:
+        notes = []
     result = data.copy()
     renamed: dict[str, str] = {}
     for column in result.columns:
@@ -108,10 +117,16 @@ def extract_metadata(
     source: str = "",
     instrument: str = "",
     frequency: str = "Daily",
-    cleaning_notes: list[str] | None = None,
+    cleaning_notes: Iterable[str] | str | None = None,
 ) -> DatasetMetadata:
     """Return metadata for a validated dataframe."""
-    validated = validate_ohlcv(data, cleaning_notes=cleaning_notes)
+    if isinstance(cleaning_notes, str):
+        notes = [cleaning_notes]
+    elif isinstance(cleaning_notes, Iterable):
+        notes = [str(note) for note in cleaning_notes if note is not None]
+    else:
+        notes = []
+    validated = validate_ohlcv(data, cleaning_notes=notes)
     return DatasetMetadata(
         source=source,
         instrument=instrument,
@@ -119,6 +134,6 @@ def extract_metadata(
         start_date=str(validated["Date"].iloc[0]),
         end_date=str(validated["Date"].iloc[-1]),
         row_count=len(validated),
-        cleaning_notes=tuple(cleaning_notes or ()),
+        cleaning_notes=tuple(notes),
         columns=tuple(validated.columns),
     )

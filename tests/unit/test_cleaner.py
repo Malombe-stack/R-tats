@@ -146,3 +146,24 @@ def test_cleaning_result_normalizes_none_and_dict_shapes() -> None:
     })
     assert malformed_counts.source_row_count == 0
     assert malformed_counts.usable_row_count == 0
+
+
+def test_validator_accepts_tuple_and_string_cleaning_notes() -> None:
+    from ingestion.validator import validate_ohlcv
+
+    data = pd.DataFrame({
+        "Date": ["2024-01-01", "2024-01-02"],
+        "Open": [10, 11],
+        "High": [12, 13],
+        "Low": [9, 10],
+        "Close": [11, 12],
+        "Volume": [100, 110],
+    })
+
+    tuple_notes = ("initial note",)
+    result = validate_ohlcv(data, cleaning_notes=tuple_notes)
+    assert not result.empty
+
+    list_notes: list[str] = []
+    validate_ohlcv(data, cleaning_notes=list_notes)
+    assert isinstance(list_notes, list)

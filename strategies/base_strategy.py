@@ -33,7 +33,13 @@ class BaseStrategy(bt.Strategy):
         price = float(self.data.close[0])
         if not isfinite(price) or price <= 0:
             return 0.0
-        return float(int(self.broker.getcash() * self.p.position_size_pct / price))
+        try:
+            cash = float(self.broker.getcash())
+        except (TypeError, ValueError, OverflowError):
+            return 0.0
+        if not isfinite(cash) or cash <= 0:
+            return 0.0
+        return float(int(cash * self.p.position_size_pct / price))
 
     def record_risk_rejection(self, reason: str) -> None:
         """Record a signal blocked before an order is submitted."""

@@ -5,7 +5,12 @@ import ast
 from pathlib import Path
 
 from app.help_text import HELP, tooltip
-from app.main import THEME_COLORS, build_equity_figure
+from app.main import (
+    THEME_COLORS,
+    build_equity_figure,
+    normalize_cleaning_notes,
+    _safe_cleaning_count,
+)
 from backtesting.runner import run_backtest
 from analytics.metrics import calculate_metrics
 
@@ -116,3 +121,14 @@ def test_equity_chart_guards_none_nan_and_extreme_values() -> None:
     assert figure.layout.legend.orientation == "h"
     assert len(figure.data) == 1
     assert all(math.isfinite(float(value)) for value in figure.data[0].y)
+
+
+def test_cleaning_notes_and_counts_are_always_safe() -> None:
+    assert normalize_cleaning_notes(None) == []
+    assert normalize_cleaning_notes("one note") == ["one note"]
+    assert normalize_cleaning_notes(("one", None, "two")) == ["one", "two"]
+    assert normalize_cleaning_notes({"unexpected": "container"}) == ["{'unexpected': 'container'}"]
+    assert _safe_cleaning_count(None) == 0
+    assert _safe_cleaning_count("bad") == 0
+    assert _safe_cleaning_count(-4) == 0
+    assert _safe_cleaning_count("12") == 12

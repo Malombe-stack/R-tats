@@ -141,6 +141,28 @@ def _cleaned_csv_bytes(cleaned: pd.DataFrame) -> bytes:
     return cleaned.to_csv(index=False).encode("utf-8")
 
 
+def _safe_cleaning_count(value: Any) -> int:
+    """Convert cleaning row counts to a non-negative integer."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, number)
+
+
+def normalize_cleaning_notes(value: Any) -> list[str]:
+    """Normalize cleaning notes to a mutable list of display-safe strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [str(value)]
+    if isinstance(value, Iterable):
+        return [str(note) for note in value if note is not None]
+    return [str(value)]
+
+
 @st.cache_data(show_spinner=False)
 def _clean_uploaded_bytes(payload: bytes) -> CleaningResult:
     """Cache deterministic cleaning of unchanged uploaded bytes."""
@@ -499,16 +521,18 @@ def main() -> None:
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
             post_clean_check = clean_ohlcv_dataframe(cleaning.data)
-            cleaning_notes = []
+            cleaning_notes = normalize_cleaning_notes(None)
             if cleaning.issues:
                 cleaning_notes.extend(f"Issue detected: {issue}" for issue in cleaning.issues)
             if cleaning.modifications:
                 cleaning_notes.extend(
                     f"Cleaning action: {action}" for action in cleaning.modifications
                 )
+            usable_count = _safe_cleaning_count(cleaning.usable_row_count)
+            source_count = _safe_cleaning_count(cleaning.source_row_count)
             cleaning_notes.append(
-                f"Extraction/cleaning count: kept {cleaning.usable_row_count} usable row(s) "
-                f"from {cleaning.source_row_count} source row(s); extracted 6 required OHLCV columns."
+                f"Extraction/cleaning count: kept {usable_count} usable row(s) "
+                f"from {source_count} source row(s); extracted 6 required OHLCV columns."
             )
             if post_clean_check.issues:
                 cleaning_notes.extend(
@@ -517,7 +541,7 @@ def main() -> None:
                 )
             else:
                 cleaning_notes.append(
-                    f"Post-clean verification passed: {len(cleaning.data)} usable row(s) remain "
+                    f"Post-clean verification passed: {_safe_cleaning_count(len(cleaning.data))} usable row(s) remain "
                     "with normalized columns, chronological dates, and valid OHLCV values."
                 )
             data = validate_ohlcv(cleaning.data, duplicate_policy="raise", cleaning_notes=cleaning_notes)
@@ -529,7 +553,7 @@ def main() -> None:
             )
         else:
             data, metadata = _load_bundled_cached(str(selected_path), instrument)
-            cleaning_notes = list(metadata.cleaning_notes)
+            cleaning_notes = normalize_cleaning_notes(metadata.cleaning_notes)
         result = _run_backtest_cached(
             data,
             strategy,
