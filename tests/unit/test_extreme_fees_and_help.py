@@ -43,6 +43,7 @@ def test_percentage_and_non_percentage_definitions_are_explicit() -> None:
     assert "Max Drawdown (%)" in tooltip("max_drawdown")
     assert "Win Rate (%)" in tooltip("win_rate")
     assert "Completed Trades (non-percentage integer count)" in tooltip("completed_trades")
+    assert "shares or units bought or traded" in tooltip("quantity")
 
 
 def test_midnight_plum_theme_semantic_colors_are_configured() -> None:

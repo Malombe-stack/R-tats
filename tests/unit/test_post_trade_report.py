@@ -1,6 +1,7 @@
 """Focused tests for the post-trade and risk audit report."""
 
 from analytics.post_trade_report import generate_post_trade_risk_report
+from analytics.report_exports import report_to_pdf, report_to_txt
 from backtesting.runner import BacktestResult
 
 
@@ -91,3 +92,43 @@ def test_report_flags_high_commission_stress() -> None:
     assert "Commission: **20.00%**" in report
     assert "Slippage: **100.00%**" in report
     assert "High-Cost Stress Test" in report
+
+
+def test_plain_text_report_export_is_readable_and_not_markdown() -> None:
+    markdown_report = """# Post-Trade & Risk Audit Report
+
+## What Worked
+
+- Total net PnL after commission: **120.00**.
+
+| Side | Quantity | Net PnL |
+|---|---:|---:|
+| LONG entry / closed exit | 10.0000 | 118.0000 |
+"""
+
+    text_report = report_to_txt(markdown_report)
+
+    assert "Post-Trade & Risk Audit Report" in text_report
+    assert "What Worked" in text_report
+    assert "Total net PnL after commission: 120.00." in text_report
+    assert "LONG entry / closed exit | 10.0000 | 118.0000" in text_report
+    assert "**" not in text_report
+    assert "|---|" not in text_report
+
+
+def test_pdf_report_export_returns_a_pdf_document() -> None:
+    markdown_report = """# Post-Trade & Risk Audit Report
+
+## What Worked
+
+- 1 profitable trade.
+
+## Risk Check Rejections & Data Hygiene
+
+- `0 orders blocked by risk checks`
+"""
+
+    pdf_report = report_to_pdf(markdown_report)
+
+    assert pdf_report.startswith(b"%PDF-")
+    assert len(pdf_report) > 500

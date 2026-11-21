@@ -33,7 +33,7 @@ HELP = {
     "commission_field": "commission (non-percentage currency amount): total execution commission for a trade.",
     "entry_time": "entry_time (non-percentage timestamp): date the LONG position opened.",
     "exit_time": "exit_time (non-percentage timestamp): date the position closed.",
-    "quantity": "quantity (non-percentage share count): number of units in the trade.",
+    "quantity": "quantity (non-percentage share/unit count): number of shares or units bought or traded.",
     "entry_price": "entry_price (non-percentage currency/price): execution price at entry.",
     "exit_price": "exit_price (non-percentage currency/price): execution price at exit.",
 }

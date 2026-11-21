@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from analytics.metrics import calculate_metrics
 from analytics.post_trade_report import generate_post_trade_risk_report
+from analytics.report_exports import report_to_pdf, report_to_txt
 from app.help_text import tooltip
 from backtesting.runner import run_backtest
 from ingestion.cleaner import CleaningResult, clean_ohlcv_csv
@@ -452,11 +453,22 @@ def main() -> None:
     )
     st.subheader("Post-Trade & Risk Audit Report")
     st.markdown(report)
-    st.download_button(
-        "Download audit report (.md)",
-        data=report.encode("utf-8"),
-        file_name="r_tats_post_trade_risk_audit.md",
-        mime="text/markdown",
+    txt_report = report_to_txt(report)
+    pdf_report = report_to_pdf(report)
+    txt_column, pdf_column = st.columns(2)
+    txt_column.download_button(
+        "Download audit report (.txt)",
+        data=txt_report.encode("utf-8"),
+        file_name="r_tats_post_trade_risk_audit.txt",
+        mime="text/plain",
+        help="Plain text: portable, readable report with all report sections.",
+    )
+    pdf_column.download_button(
+        "Download audit report (.pdf)",
+        data=pdf_report,
+        file_name="r_tats_post_trade_risk_audit.pdf",
+        mime="application/pdf",
+        help="PDF: formatted report for customer review or archiving.",
     )
 
 

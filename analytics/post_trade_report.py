@@ -57,7 +57,7 @@ def generate_post_trade_risk_report(
     commission_percent: float = 0.0,
     slippage_percent: float = 0.0,
 ) -> str:
-    """Generate a Markdown audit report without changing simulation data."""
+    """Generate an audit report without changing simulation data."""
     trades = _closed_trades(result.trades)
     winning = [trade for trade in trades if float(trade.get("pnl_net", trade.get("profit_loss", 0))) > 0]
     losing = [trade for trade in trades if float(trade.get("pnl_net", trade.get("profit_loss", 0))) < 0]
