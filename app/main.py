@@ -46,7 +46,7 @@ def _instrument_from_filename(path: Path) -> str:
 def main() -> None:
     """Render the dashboard."""
     st.set_page_config(page_title="R-TATS", layout="wide")
-    st.title("R-TATS — STU 3101 Quantitative Simulation")
+    st.title("R-TATS")
     st.warning(DISCLAIMER)
     with st.sidebar:
         st.header("Simulation configuration")

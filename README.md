@@ -1,4 +1,4 @@
-# R-TATS (STU 3101)
+# R-TATS
 
 R-TATS is an academic quantitative research and simulation prototype for
 event-driven historical backtesting. It supports deterministic OHLCV ingestion,

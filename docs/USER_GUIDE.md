@@ -1,6 +1,6 @@
 # R-TATS User Guide
 
-R-TATS (STU 3101) is an academic, simulation-only backtesting prototype. It
+R-TATS is an academic, simulation-only backtesting prototype. It
 loads historical OHLCV data, validates it, runs an event-driven Backtrader
 strategy, calculates deterministic performance metrics, and stores/export the
 results. It never connects to a broker, places real orders, or stores
