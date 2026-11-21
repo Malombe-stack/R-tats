@@ -85,3 +85,26 @@ def test_duplicate_issue_is_not_reported_as_passed_and_cleaning_modifies_data() 
     assert not verified.issues
     assert "No compatibility issues were detected." in verified.actions
     assert not verified.modifications
+
+
+def test_messy_extra_columns_aliases_duplicates_and_formatted_numbers() -> None:
+    source = pd.DataFrame({
+        " Trade Date ": ["2024-01-03", "2024-01-01", "2024-01-03", "2024-01-02"],
+        "Opening": [" $11 ", "$9", "$12", "$10"],
+        "High": ["14", "11", "13", "12"],
+        "Minimum": ["10", "8", "11", "9"],
+        "Adj Close": ["13", "10", "13", "11"],
+        "Qty": ["1,000", "900", "1,100", "950"],
+        "Symbol": ["ABC", "ABC", "ABC", "ABC"],
+    })
+
+    result = clean_ohlcv_dataframe(source)
+
+    assert list(result.data.columns) == ["Date", "Open", "High", "Low", "Close", "Volume"]
+    assert result.data["Date"].tolist() == ["2024-01-01", "2024-01-02", "2024-01-03"]
+    assert result.data["Volume"].tolist() == [900.0, 950.0, 1100.0]
+    assert any("duplicate timestamp" in issue.lower() for issue in result.issues)
+    assert any("unsorted" in issue.lower() for issue in result.issues)
+    assert result.modifications
+    assert result.source_row_count == 4
+    assert result.usable_row_count == 3

@@ -21,6 +21,8 @@ class CleaningResult:
     data: pd.DataFrame
     issues: tuple[str, ...]
     actions: tuple[str, ...]
+    source_row_count: int = 0
+    usable_row_count: int = 0
 
     @property
     def cleaning_summary(self) -> tuple[str, ...]:
@@ -33,7 +35,11 @@ class CleaningResult:
             "No compatibility issues were detected.",
             "The dataset was inspected; no rows required removal.",
         }
-        return tuple(action for action in self.actions if action not in excluded)
+        return tuple(
+            action for action in self.actions
+            if action not in excluded
+            and not action.startswith("Extraction/cleaning count:")
+        )
 
 
 def _normalized_key(value: object) -> str:
@@ -43,9 +49,13 @@ def _normalized_key(value: object) -> str:
 _ALIASES = {
     "date": "Date", "timestamp": "Date", "datetime": "Date",
     "tradedate": "Date", "open": "Open", "openprice": "Open",
+    "opening": "Open", "openingprice": "Open",
     "high": "High", "highprice": "High", "low": "Low",
-    "lowprice": "Low", "close": "Close", "closeprice": "Close",
-    "adjclose": "Close", "volume": "Volume", "vol": "Volume",
+    "lowprice": "Low", "maximum": "High", "minimum": "Low",
+    "close": "Close", "closeprice": "Close", "closing": "Close",
+    "closingprice": "Close", "adjclose": "Close", "adjustedclose": "Close",
+    "volume": "Volume", "vol": "Volume", "qty": "Volume",
+    "quantity": "Volume", "tradingvolume": "Volume", "totalvolume": "Volume",
 }
 
 
@@ -67,9 +77,16 @@ def _parse_dates(values: pd.Series) -> pd.Series:
 def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
     """Normalize aliases and remove unusable OHLCV rows deterministically."""
     if data.empty:
-        return CleaningResult(data=data.copy(), issues=("The CSV is empty.",), actions=())
+        return CleaningResult(
+            data=data.copy(),
+            issues=("The CSV is empty.",),
+            actions=(),
+            source_row_count=0,
+            usable_row_count=0,
+        )
 
     frame = data.copy()
+    source_row_count = len(frame)
     issues: list[str] = []
     actions: list[str] = []
     renamed: dict[str, str] = {}
@@ -169,11 +186,29 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
         actions.append(f"Dropped {invalid_count} invalid OHLCV row(s).")
 
     frame["Date"] = frame["Date"].dt.strftime("%Y-%m-%d")
+    usable_row_count = len(frame)
+    if usable_row_count and source_row_count != usable_row_count:
+        actions.append(
+            f"Extraction/cleaning count: kept {usable_row_count} usable row(s) "
+            f"from {source_row_count} source row(s); extracted 6 required OHLCV columns."
+        )
     if not issues:
         actions.append("No compatibility issues were detected.")
     elif not actions:
         actions.append("The dataset was inspected; no rows required removal.")
-    return CleaningResult(frame.reset_index(drop=True), tuple(issues), tuple(actions))
+    cleaned = frame.reset_index(drop=True)
+    if usable_row_count == source_row_count and not issues:
+        actions.append(
+            f"Extraction/cleaning count: kept {usable_row_count} usable row(s) "
+            f"from {source_row_count} source row(s); extracted 6 required OHLCV columns."
+        )
+    return CleaningResult(
+        cleaned,
+        tuple(issues),
+        tuple(actions),
+        source_row_count=source_row_count,
+        usable_row_count=usable_row_count,
+    )
 
 
 def clean_ohlcv_csv(source: str | Path | bytes | BinaryIO | pd.DataFrame) -> CleaningResult:

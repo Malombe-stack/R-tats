@@ -190,11 +190,13 @@ def generate_post_trade_risk_report(
     legacy_modifications = [
         action for action in actions
         if not action.startswith(("Issue detected:", "Post-clean", "Cleaning action:"))
+        and not action.startswith("Extraction/cleaning count:")
         and action not in {"No compatibility issues were detected.", "The dataset was inspected; no rows required removal."}
         and not action.startswith("Post-clean ")
     ]
     modifications.extend(legacy_modifications)
     post_checks = [action for action in actions if action.startswith("Post-clean")]
+    extraction_counts = [action for action in actions if action.startswith("Extraction/cleaning count:")]
     if detected:
         lines.append("- Compatibility issues detected:")
         lines.extend(f"  - {action.removeprefix('Issue detected: ').strip()}" for action in detected)
@@ -206,4 +208,7 @@ def generate_post_trade_risk_report(
     if post_checks:
         lines.append("- Post-clean verification:")
         lines.extend(f"  - {action}" for action in post_checks)
+    if extraction_counts:
+        lines.append("- Data extraction/cleaning counts:")
+        lines.extend(f"  - {action.removeprefix('Extraction/cleaning count: ').strip()}" for action in extraction_counts)
     return "\n".join(lines)

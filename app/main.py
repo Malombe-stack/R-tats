@@ -193,40 +193,48 @@ def main() -> None:
                 st.session_state["uploaded_cleaning"] = uploaded_cleaning
             else:
                 uploaded_cleaning = st.session_state.get("uploaded_cleaning")
-            if uploaded_cleaning.issues:
+            if uploaded_cleaning.data.empty:
                 st.error("Issues detected")
                 for issue in uploaded_cleaning.issues:
                     st.write(f"- {issue}")
-                if uploaded_cleaning.data.empty:
-                    st.warning("Required columns are missing or no usable rows remain.")
-                else:
-                    post_clean_check = clean_ohlcv_dataframe(uploaded_cleaning.data)
-                    st.session_state["uploaded_post_clean_check"] = post_clean_check
-                    st.caption("Cleaning summary")
-                    modifications = uploaded_cleaning.modifications
-                    if modifications:
-                        for action in modifications:
-                            st.write(f"- {action}")
-                    else:
-                        st.write("- No data-changing cleaning actions were required.")
-                    if post_clean_check.issues:
-                        st.warning("Post-clean verification found remaining issues:")
-                        for issue in post_clean_check.issues:
-                            st.write(f"- {issue}")
-                    else:
-                        st.success(
-                            f"Post-clean verification passed: {len(uploaded_cleaning.data)} usable row(s) remain "
-                            "with normalized columns, chronological dates, and valid OHLCV values."
-                        )
-                    st.download_button(
-                        "Download cleaned CSV",
-                        data=_cleaned_csv_bytes(uploaded_cleaning.data),
-                        file_name="r_tats_cleaned.csv",
-                        mime="text/csv",
-                        key="cleaned_csv_download",
-                    )
+                st.warning("Required columns are missing or no usable rows remain.")
             else:
-                st.success("CSV structure and values passed compatibility checks.")
+                post_clean_check = clean_ohlcv_dataframe(uploaded_cleaning.data)
+                st.session_state["uploaded_post_clean_check"] = post_clean_check
+                modifications = uploaded_cleaning.modifications
+                if modifications:
+                    st.success(
+                        f"Auto-cleaned & ready: {uploaded_cleaning.source_row_count} source row(s) "
+                        f"extracted; {len(uploaded_cleaning.data)} usable row(s); "
+                        f"{len(modifications)} cleaning action(s) applied."
+                    )
+                    st.caption("Cleaning summary")
+                    for action in modifications:
+                        st.write(f"- {action}")
+                else:
+                    st.success(
+                        f"Clean OHLCV data loaded: {uploaded_cleaning.source_row_count} source "
+                        f"row(s) extracted; {len(uploaded_cleaning.data)} usable row(s)."
+                    )
+                if uploaded_cleaning.issues:
+                    st.caption("Original issues detected and resolved")
+                    for issue in uploaded_cleaning.issues:
+                        st.write(f"- {issue}")
+                if post_clean_check.issues:
+                    st.warning("Post-clean verification found remaining issues:")
+                    for issue in post_clean_check.issues:
+                        st.write(f"- {issue}")
+                else:
+                    st.caption(
+                        f"Post-clean verification passed: {len(uploaded_cleaning.data)} usable row(s) remain."
+                    )
+                st.download_button(
+                    "Download cleaned CSV",
+                    data=_cleaned_csv_bytes(uploaded_cleaning.data),
+                    file_name="r_tats_cleaned.csv",
+                    mime="text/csv",
+                    key="cleaned_csv_download",
+                )
         bundled_paths = sorted(SAMPLES_DIR.glob("*.csv"))
         selected_path = st.selectbox(
             "Bundled dataset",
@@ -315,15 +323,7 @@ def main() -> None:
             type="primary",
             help="Run the existing deterministic simulation with these labeled parameters.",
         )
-        auto_clean_run = (
-            st.button("Clean, organize, and run", type="secondary")
-            if uploaded is not None
-            and uploaded_cleaning is not None
-            and uploaded_cleaning.issues
-            and not uploaded_cleaning.data.empty
-            else False
-        )
-    should_run = run or auto_clean_run
+    should_run = run
     if not should_run:
         st.info("Choose a dataset and configuration, then run the simulation.")
         return
@@ -340,6 +340,10 @@ def main() -> None:
                 cleaning_notes.extend(
                     f"Cleaning action: {action}" for action in cleaning.modifications
                 )
+            cleaning_notes.append(
+                f"Extraction/cleaning count: kept {cleaning.usable_row_count} usable row(s) "
+                f"from {cleaning.source_row_count} source row(s); extracted 6 required OHLCV columns."
+            )
             if post_clean_check.issues:
                 cleaning_notes.extend(
                     f"Post-clean issue remaining: {issue}"
