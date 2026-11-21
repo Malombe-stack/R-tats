@@ -10,6 +10,8 @@ from app.main import (
     build_equity_figure,
     normalize_cleaning_notes,
     _safe_cleaning_count,
+    _safe_uploaded_name,
+    _safe_uploaded_bytes,
 )
 from backtesting.runner import run_backtest
 from analytics.metrics import calculate_metrics
@@ -132,3 +134,17 @@ def test_cleaning_notes_and_counts_are_always_safe() -> None:
     assert _safe_cleaning_count("bad") == 0
     assert _safe_cleaning_count(-4) == 0
     assert _safe_cleaning_count("12") == 12
+
+
+def test_uploaded_name_and_bytes_never_depend_on_stale_attributes() -> None:
+    class Upload:
+        name = "NSE_MESSY.csv"
+
+        def getvalue(self) -> bytes:
+            return b"Date,Open,High,Low,Close,Volume\n2024-01-01,10,11,9,10,100\n"
+
+    upload = Upload()
+    assert _safe_uploaded_name(upload) == "NSE_MESSY.csv"
+    assert _safe_uploaded_name(None) == "uploaded.csv"
+    assert _safe_uploaded_bytes(upload).startswith(b"Date,")
+    assert _safe_uploaded_bytes(None) == b""

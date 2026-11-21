@@ -163,6 +163,35 @@ def normalize_cleaning_notes(value: Any) -> list[str]:
     return [str(value)]
 
 
+def _safe_uploaded_name(uploaded: Any, fallback: str = "uploaded.csv") -> str:
+    """Return a display-safe uploaded filename without assuming widget state."""
+    name = getattr(uploaded, "name", None)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return fallback
+
+
+def _safe_uploaded_bytes(uploaded: Any) -> bytes:
+    """Read upload bytes defensively across Streamlit reruns."""
+    if uploaded is None:
+        return b""
+    getter = getattr(uploaded, "getvalue", None)
+    if callable(getter):
+        try:
+            value = getter()
+        except (AttributeError, OSError, ValueError, TypeError):
+            return b""
+    else:
+        value = getattr(uploaded, "value", b"")
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return b""
+
+
 @st.cache_data(show_spinner=False)
 def _clean_uploaded_bytes(payload: bytes) -> CleaningResult:
     """Cache deterministic cleaning of unchanged uploaded bytes."""
@@ -346,6 +375,7 @@ def main() -> None:
     )
     st.warning(DISCLAIMER)
     uploaded_cleaning: CleaningResult | None = None
+    uploaded_name = "uploaded.csv"
     with st.sidebar:
         st.header("Simulation Configuration")
         st.caption("Upload OHLCV data or use a bundled deterministic dataset.")
@@ -355,9 +385,10 @@ def main() -> None:
             help=tooltip("upload"),
         )
         if uploaded is not None:
-            uploaded_bytes = uploaded.getvalue()
+            uploaded_name = _safe_uploaded_name(uploaded)
+            uploaded_bytes = _safe_uploaded_bytes(uploaded)
             upload_key = hashlib.sha256(uploaded_bytes).hexdigest()
-            cache_key = f"{uploaded.name}:{len(uploaded_bytes)}:{upload_key}"
+            cache_key = f"{uploaded_name}:{len(uploaded_bytes)}:{upload_key}"
             cached_key = st.session_state.get("uploaded_csv_cache_key")
             if cached_key != cache_key:
                 try:
@@ -373,7 +404,7 @@ def main() -> None:
                     )
                 st.session_state["uploaded_csv_cache_key"] = cache_key
                 st.session_state["uploaded_csv_bytes"] = uploaded_bytes
-                st.session_state["uploaded_csv_name"] = uploaded.name
+                st.session_state["uploaded_csv_name"] = uploaded_name
                 st.session_state["uploaded_cleaning"] = uploaded_cleaning
             else:
                 uploaded_cleaning = normalize_cleaning_result(
@@ -516,7 +547,7 @@ def main() -> None:
     try:
         if uploaded is not None:
             cleaning = normalize_cleaning_result(
-                uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
+                uploaded_cleaning or clean_ohlcv_csv(_safe_uploaded_bytes(uploaded))
             )
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
@@ -547,7 +578,7 @@ def main() -> None:
             data = validate_ohlcv(cleaning.data, duplicate_policy="raise", cleaning_notes=cleaning_notes)
             metadata = extract_metadata(
                 data,
-                source=uploaded.name,
+                source=uploaded_name,
                 instrument="",
                 cleaning_notes=cleaning_notes,
             )
@@ -564,7 +595,7 @@ def main() -> None:
             position_size_pct=position_size_pct,
         )
         currency_source = (
-            uploaded.name if uploaded is not None
+            uploaded_name if uploaded is not None
             else str(selected_path)
         )
         currency_code, currency_symbol = resolve_market_currency(
