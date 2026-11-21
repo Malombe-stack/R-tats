@@ -26,6 +26,15 @@ class CleaningResult:
     def cleaning_summary(self) -> tuple[str, ...]:
         return self.actions
 
+    @property
+    def modifications(self) -> tuple[str, ...]:
+        """Only real cleaning/status actions, excluding no-op conclusions."""
+        excluded = {
+            "No compatibility issues were detected.",
+            "The dataset was inspected; no rows required removal.",
+        }
+        return tuple(action for action in self.actions if action not in excluded)
+
 
 def _normalized_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).strip().lower())
@@ -64,6 +73,7 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
     issues: list[str] = []
     actions: list[str] = []
     renamed: dict[str, str] = {}
+    renamed_count = 0
 
     for column in frame.columns:
         normalized = _normalized_key(column)
@@ -72,8 +82,11 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
             renamed[column] = target
             if str(column).strip() != target:
                 issues.append(f"Column alias `{column}` was normalized to `{target}`.")
+                renamed_count += 1
     if renamed:
         frame = frame.rename(columns=renamed)
+        if renamed_count:
+            actions.append(f"Normalized {renamed_count} column name/alias(es).")
         if frame.columns.duplicated().any():
             frame = frame.loc[:, ~frame.columns.duplicated(keep="last")]
 
@@ -102,13 +115,18 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
         issues.append(f"{malformed_dates} row(s) contain unparsed timestamps.")
     if parsed.notna().sum() > 1 and not parsed.dropna().is_monotonic_increasing:
         issues.append("Timestamps were unsorted.")
+        actions.append("Sorted rows chronologically.")
     frame["Date"] = parsed
 
     numeric_columns = ("Open", "High", "Low", "Close", "Volume")
     for column in numeric_columns:
         raw_strings = frame[column].astype("string")
         if raw_strings.str.contains(r"[$,\s]", regex=True).fillna(False).any():
+            formatted_count = int(raw_strings.str.contains(r"[$,\s]", regex=True).fillna(False).sum())
             issues.append(f"{column} contains formatted numeric text (currency symbol, commas, or whitespace).")
+            actions.append(
+                f"Sanitized {formatted_count} formatted numeric value(s) in {column}."
+            )
         sanitized = (
             raw_strings.str.strip()
             .str.replace(r"[$,\s]", "", regex=True)
@@ -133,7 +151,6 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
         actions.append(f"Removed {duplicate_count} duplicate timestamp(s), keeping the last record deterministically.")
 
     frame = frame.sort_values("Date", kind="stable").reset_index(drop=True)
-    actions.append("Sorted rows chronologically by timestamp.")
 
     price_columns = ("Open", "High", "Low", "Close")
     invalid_mask = (

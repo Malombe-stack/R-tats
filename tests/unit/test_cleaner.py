@@ -63,3 +63,25 @@ def test_cleaner_accepts_file_like_buffers_and_already_numeric_values() -> None:
         assert result.data["Date"].tolist() == ["2024-01-01", "2024-01-03"]
         assert result.data["Open"].tolist() == [9.0, 10.0]
         assert not result.data.isna().any().any()
+
+
+def test_duplicate_issue_is_not_reported_as_passed_and_cleaning_modifies_data() -> None:
+    source = pd.DataFrame({
+        "Timestamp": ["2024-01-02", "2024-01-01", "2024-01-02"],
+        "Open": [11, 9, 12],
+        "High": [13, 11, 14],
+        "Low": [10, 8, 11],
+        "Close": [12, 10, 13],
+        "Volume": [110, 90, 120],
+    })
+
+    result = clean_ohlcv_dataframe(source)
+    verified = clean_ohlcv_dataframe(result.data)
+
+    assert any("duplicate timestamp" in issue.lower() for issue in result.issues)
+    assert any("unsorted" in issue.lower() for issue in result.issues)
+    assert len(result.data) == 2
+    assert result.data["Date"].tolist() == ["2024-01-01", "2024-01-02"]
+    assert not verified.issues
+    assert "No compatibility issues were detected." in verified.actions
+    assert not verified.modifications

@@ -22,7 +22,7 @@ from analytics.report_exports import report_to_pdf, report_to_txt
 from app.currency import resolve_market_currency
 from app.help_text import tooltip
 from backtesting.runner import run_backtest
-from ingestion.cleaner import CleaningResult, clean_ohlcv_csv
+from ingestion.cleaner import CleaningResult, clean_ohlcv_csv, clean_ohlcv_dataframe
 from ingestion.loader import load_csv
 from ingestion.validator import extract_metadata, validate_ohlcv
 
@@ -194,15 +194,30 @@ def main() -> None:
             else:
                 uploaded_cleaning = st.session_state.get("uploaded_cleaning")
             if uploaded_cleaning.issues:
-                st.error("CSV compatibility issues detected")
+                st.error("Issues detected")
                 for issue in uploaded_cleaning.issues:
                     st.write(f"- {issue}")
-                st.caption("Cleaning summary")
-                for action in uploaded_cleaning.actions:
-                    st.write(f"- {action}")
                 if uploaded_cleaning.data.empty:
                     st.warning("Required columns are missing or no usable rows remain.")
                 else:
+                    post_clean_check = clean_ohlcv_dataframe(uploaded_cleaning.data)
+                    st.session_state["uploaded_post_clean_check"] = post_clean_check
+                    st.caption("Cleaning summary")
+                    modifications = uploaded_cleaning.modifications
+                    if modifications:
+                        for action in modifications:
+                            st.write(f"- {action}")
+                    else:
+                        st.write("- No data-changing cleaning actions were required.")
+                    if post_clean_check.issues:
+                        st.warning("Post-clean verification found remaining issues:")
+                        for issue in post_clean_check.issues:
+                            st.write(f"- {issue}")
+                    else:
+                        st.success(
+                            f"Post-clean verification passed: {len(uploaded_cleaning.data)} usable row(s) remain "
+                            "with normalized columns, chronological dates, and valid OHLCV values."
+                        )
                     st.download_button(
                         "Download cleaned CSV",
                         data=_cleaned_csv_bytes(uploaded_cleaning.data),
@@ -317,7 +332,24 @@ def main() -> None:
             cleaning = uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
-            cleaning_notes = list(cleaning.actions)
+            post_clean_check = clean_ohlcv_dataframe(cleaning.data)
+            cleaning_notes = []
+            if cleaning.issues:
+                cleaning_notes.extend(f"Issue detected: {issue}" for issue in cleaning.issues)
+            if cleaning.modifications:
+                cleaning_notes.extend(
+                    f"Cleaning action: {action}" for action in cleaning.modifications
+                )
+            if post_clean_check.issues:
+                cleaning_notes.extend(
+                    f"Post-clean issue remaining: {issue}"
+                    for issue in post_clean_check.issues
+                )
+            else:
+                cleaning_notes.append(
+                    f"Post-clean verification passed: {len(cleaning.data)} usable row(s) remain "
+                    "with normalized columns, chronological dates, and valid OHLCV values."
+                )
             data = validate_ohlcv(cleaning.data, duplicate_policy="raise", cleaning_notes=cleaning_notes)
             metadata = extract_metadata(
                 data,

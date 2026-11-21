@@ -185,9 +185,25 @@ def generate_post_trade_risk_report(
     else:
         lines.append("- `0 orders blocked by risk checks`")
     actions = [str(action) for action in cleaning_actions if str(action)]
-    if actions:
-        lines.append("- Auto-cleaning actions:")
-        lines.extend(f"  - {action}" for action in actions)
+    detected = [action for action in actions if action.startswith("Issue detected:")]
+    modifications = [action for action in actions if action.startswith("Cleaning action:")]
+    legacy_modifications = [
+        action for action in actions
+        if not action.startswith(("Issue detected:", "Post-clean", "Cleaning action:"))
+        and action not in {"No compatibility issues were detected.", "The dataset was inspected; no rows required removal."}
+        and not action.startswith("Post-clean ")
+    ]
+    modifications.extend(legacy_modifications)
+    post_checks = [action for action in actions if action.startswith("Post-clean")]
+    if detected:
+        lines.append("- Compatibility issues detected:")
+        lines.extend(f"  - {action.removeprefix('Issue detected: ').strip()}" for action in detected)
+    if modifications:
+        lines.append("- Auto-cleaning actions applied:")
+        lines.extend(f"  - {action.removeprefix('Cleaning action: ').strip()}" for action in modifications)
     else:
         lines.append("- Data hygiene: no auto-cleaning actions were applied.")
+    if post_checks:
+        lines.append("- Post-clean verification:")
+        lines.extend(f"  - {action}" for action in post_checks)
     return "\n".join(lines)
