@@ -7,6 +7,7 @@ import sys
 import hashlib
 import math
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 
 import plotly.graph_objects as go
@@ -124,11 +125,16 @@ def _instrument_from_filename(path: Path) -> str:
 def _kpi_value(value: Any, name: str) -> str:
     if value is None:
         return "N/A"
-    if name in {"total_return", "max_drawdown", "win_rate"}:
-        return f"{float(value):.2f}%"
-    if name in {"sharpe_ratio", "profit_factor"}:
-        return f"{float(value):.2f}"
-    return f"{int(value):,}"
+    try:
+        if name in {"total_return", "max_drawdown", "win_rate"}:
+            number = float(value)
+            return f"{number:.2f}%" if math.isfinite(number) else "N/A"
+        if name in {"sharpe_ratio", "profit_factor"}:
+            number = float(value)
+            return f"{number:.2f}" if math.isfinite(number) else "N/A"
+        return f"{int(float(value)):,}" if math.isfinite(float(value)) else "N/A"
+    except (TypeError, ValueError, OverflowError):
+        return "N/A"
 
 
 def _cleaned_csv_bytes(cleaned: pd.DataFrame) -> bytes:
@@ -178,8 +184,14 @@ def _calculate_metrics_cached(
     return calculate_metrics(initial_cash, final_value, equity_curve, trades)
 
 
-def _styled_trade_log(trades: tuple[dict[str, Any], ...]) -> Any:
-    frame = pd.DataFrame(trades)
+def _styled_trade_log(trades: Any) -> Any:
+    if isinstance(trades, dict):
+        trade_rows = [trades]
+    elif isinstance(trades, Iterable) and not isinstance(trades, (str, bytes)):
+        trade_rows = [trade for trade in trades if isinstance(trade, dict)]
+    else:
+        trade_rows = []
+    frame = pd.DataFrame(trade_rows)
     if frame.empty or "pnl_net" not in frame.columns:
         return frame
 
@@ -215,7 +227,13 @@ def build_equity_figure(
     symbol = str(currency_symbol or "$")
     baseline = _finite_chart_number(initial_cash, 0.0)
 
-    frame = pd.DataFrame(equity_curve) if equity_curve is not None else pd.DataFrame()
+    if isinstance(equity_curve, dict):
+        equity_rows = [equity_curve]
+    elif isinstance(equity_curve, Iterable) and not isinstance(equity_curve, (str, bytes)):
+        equity_rows = [row for row in equity_curve if isinstance(row, dict)]
+    else:
+        equity_rows = []
+    frame = pd.DataFrame(equity_rows)
     if not frame.empty:
         if "timestamp" not in frame.columns:
             frame["timestamp"] = frame.get("date", "")
@@ -578,7 +596,14 @@ def main() -> None:
         else:
             display_value = _kpi_value(value, name)
         column.metric(label, display_value, help=tooltip(help_name))
-    equity = pd.DataFrame(result.equity_curve) if result.equity_curve else None
+    result_equity = getattr(result, "equity_curve", ()) or ()
+    if isinstance(result_equity, dict):
+        equity_rows = [result_equity]
+    elif isinstance(result_equity, Iterable) and not isinstance(result_equity, (str, bytes)):
+        equity_rows = [row for row in result_equity if isinstance(row, dict)]
+    else:
+        equity_rows = []
+    equity = pd.DataFrame(equity_rows) if equity_rows else None
     if equity is not None:
         figure = build_equity_figure(
             equity,

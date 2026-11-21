@@ -162,3 +162,29 @@ def test_report_handles_none_collections_and_non_numeric_values() -> None:
     assert "0 orders blocked by risk checks" in report
     assert isinstance(txt_report, str)
     assert pdf_report.startswith(b"%PDF-")
+
+
+def test_report_handles_invalid_bar_lengths_and_none_values() -> None:
+    result = BacktestResult(
+        strategy="sma",
+        initial_cash=10000.0,
+        final_value=10000.0,
+        equity_curve=(None, {"timestamp": "2024-01-01", "value": float("nan")}),
+        orders=(None,),
+        trades=(
+            {
+                "status": "Closed",
+                "pnl_net": None,
+                "bar_length": None,
+                "quantity": None,
+                "entry_price": None,
+                "exit_price": None,
+                "commission": None,
+            },
+        ),
+    )
+
+    report = generate_post_trade_risk_report(result, {"max_drawdown": None})
+
+    assert "Average holding period: **0.00 bar(s)**" in report
+    assert "Peak-to-trough maximum drawdown: **N/A%**" in report

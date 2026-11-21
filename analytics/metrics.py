@@ -18,7 +18,7 @@ def calculate_metrics(
     risk_free_rate: float = 0.0,
 ) -> dict[str, Any]:
     """Calculate standard metrics, returning ``None`` for undefined values."""
-    if initial_cash <= 0:
+    if not isfinite(initial_cash) or initial_cash <= 0:
         raise ValueError("Initial cash must be positive.")
     if annualization_factor <= 0:
         raise ValueError("Annualization factor must be positive.")
@@ -66,7 +66,13 @@ def calculate_metrics(
         max_drawdown = float(np.max(drawdowns) * 100) if len(drawdowns) else 0.0
     else:
         max_drawdown = 0.0
-    total_change = (final_value - initial_cash) / initial_cash * 100
+    try:
+        final_value_number = float(final_value)
+    except (TypeError, ValueError):
+        final_value_number = initial_cash
+    if not isfinite(final_value_number):
+        final_value_number = initial_cash
+    total_change = (final_value_number - initial_cash) / initial_cash * 100
     if not isfinite(total_change):
         total_change = 0.0
     return {

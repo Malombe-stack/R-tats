@@ -39,6 +39,14 @@ def _finite_float(value: Any) -> float:
     return number if isfinite(number) else 0.0
 
 
+def _finite_int(value: Any) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(number) if isfinite(number) and number >= 0 else 0
+
+
 def _risk_rejections(orders: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     blocked_statuses = {"risk rejected", "canceled", "cancelled", "margin", "rejected"}
     return [
@@ -138,7 +146,7 @@ def generate_post_trade_risk_report(
         default=None,
     )
     average_bars = (
-        sum(int(trade.get("bar_length", 0)) for trade in trades) / len(trades)
+        sum(_finite_int(trade.get("bar_length", 0)) for trade in trades) / len(trades)
         if trades else 0.0
     )
     total_net = sum(_finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) for trade in trades)
