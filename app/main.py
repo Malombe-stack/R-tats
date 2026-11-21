@@ -36,29 +36,67 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 APP_CSS = """
 <style>
 .block-container {max-width: 1180px; padding-top: 1.5rem;}
+[data-testid="stAppViewContainer"] {background: #13101D;}
+[data-testid="stHeader"] {background: rgba(19,16,29,0.92);}
+[data-testid="stSidebar"] {
+    background: #1C172B;
+    border-right: 1px solid #2E2644;
+}
 [data-testid="stMetric"] {
-    background: #ffffff;
-    border: 1px solid #dfe6ef;
+    background: #1C172B;
+    border: 1px solid #2E2644;
     border-radius: 12px;
     padding: 14px 16px;
-    box-shadow: 0 2px 10px rgba(23, 32, 51, 0.05);
+    box-shadow: 0 6px 18px rgba(8, 6, 18, 0.28);
 }
 [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {
     font-variant-numeric: tabular-nums;
     white-space: normal;
 }
-[data-testid="stMetricValue"] {font-size: 1.45rem; overflow-wrap: anywhere;}
-.rt-header {border-bottom: 1px solid #dfe6ef; padding-bottom: 0.75rem; margin-bottom: 0.35rem;}
+[data-testid="stMetricLabel"] {color: #C4B5FD;}
+[data-testid="stMetricValue"] {
+    color: #F5F3FF;
+    font-size: 1.45rem;
+    overflow-wrap: anywhere;
+}
+.rt-header {border-bottom: 1px solid #2E2644; padding-bottom: 0.75rem; margin-bottom: 0.35rem;}
 .rt-header h1 {margin-bottom: 0.15rem;}
-.rt-subtitle {color: #526176; font-size: 1.05rem; margin-bottom: 0.35rem;}
+.rt-subtitle {color: #C4B5FD; font-size: 1.05rem; margin-bottom: 0.35rem;}
 .rt-mode {
-    display: inline-block; background: #e8f0ff; color: #1d4ed8;
-    border: 1px solid #bfdbfe; border-radius: 999px;
+    display: inline-block; background: rgba(168,85,247,0.16); color: #C4B5FD;
+    border: 1px solid #A855F7; border-radius: 999px;
     padding: 0.18rem 0.55rem; font-size: 0.82rem; font-weight: 700;
 }
 .rt-section {margin-top: 0.25rem;}
+[data-testid="stDataFrame"] {
+    border: 1px solid #2E2644;
+    border-radius: 10px;
+    overflow: hidden;
+}
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #A855F7, #EC4899);
+    border: 0;
+    color: #FFFFFF;
+}
+div.stButton > button:focus {
+    border-color: #EC4899;
+    box-shadow: 0 0 0 2px rgba(236,72,153,0.28);
+}
 </style>
 """
+
+THEME_COLORS = {
+    "canvas": "#13101D",
+    "card": "#1C172B",
+    "border": "#2E2644",
+    "text": "#F5F3FF",
+    "secondary": "#C4B5FD",
+    "violet": "#A855F7",
+    "rose": "#EC4899",
+    "positive": "#34D399",
+    "loss": "#FB7185",
+    "warning": "#FBBF24",
+}
 
 
 def _metric_text(value: Any, notes: dict[str, str], name: str) -> str:
@@ -86,6 +124,24 @@ def _kpi_value(value: Any, name: str) -> str:
 
 def _cleaned_csv_bytes(cleaned: pd.DataFrame) -> bytes:
     return cleaned.to_csv(index=False).encode("utf-8")
+
+
+def _styled_trade_log(trades: tuple[dict[str, Any], ...]) -> Any:
+    frame = pd.DataFrame(trades)
+    if frame.empty or "pnl_net" not in frame.columns:
+        return frame
+
+    def _pnl_color(value: Any) -> str:
+        try:
+            if float(value) > 0:
+                return f"color: {THEME_COLORS['positive']}; font-weight: 700"
+            if float(value) < 0:
+                return f"color: {THEME_COLORS['loss']}; font-weight: 700"
+        except (TypeError, ValueError):
+            pass
+        return f"color: {THEME_COLORS['secondary']}"
+
+    return frame.style.map(_pnl_color, subset=["pnl_net"])
 
 
 def main() -> None:
@@ -312,24 +368,48 @@ def main() -> None:
                 x=equity["timestamp"],
                 y=equity["value"],
                 name="Portfolio Equity",
-                line={"color": "#2563eb", "width": 2.5},
+                line={"color": THEME_COLORS["positive"], "width": 2.5},
                 fill="tozeroy",
+                fillcolor="rgba(52,211,153,0.10)",
+                hovertemplate="<b>%{x}</b><br>Portfolio equity: %{y:,.2f}<extra></extra>",
             )
         )
         figure.add_hline(
             y=result.initial_cash,
             line_dash="dash",
-            line_color="#64748b",
+            line_color=THEME_COLORS["violet"],
             name="Initial Capital",
+            annotation_text="Initial Capital",
+            annotation_font={"color": THEME_COLORS["secondary"]},
         )
         figure.update_layout(
             margin={"l": 20, "r": 20, "t": 35, "b": 20},
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#ffffff",
-            legend={"orientation": "h", "y": 1.12},
+            paper_bgcolor=THEME_COLORS["card"],
+            plot_bgcolor=THEME_COLORS["card"],
+            font={"color": THEME_COLORS["text"]},
+            legend={
+                "orientation": "h",
+                "y": 1.12,
+                "font": {"color": THEME_COLORS["secondary"]},
+            },
             hovermode="x unified",
-            yaxis={"tickformat": ",.2f", "gridcolor": "#e7edf5"},
-            xaxis={"gridcolor": "#eef2f7"},
+            hoverlabel={
+                "bgcolor": THEME_COLORS["canvas"],
+                "bordercolor": THEME_COLORS["rose"],
+                "font": {"color": THEME_COLORS["text"]},
+            },
+            yaxis={
+                "tickformat": ",.2f",
+                "gridcolor": THEME_COLORS["border"],
+                "zerolinecolor": THEME_COLORS["violet"],
+                "tickfont": {"color": THEME_COLORS["secondary"]},
+                "title": {"text": "Portfolio equity (capital units)", "font": {"color": THEME_COLORS["secondary"]}},
+            },
+            xaxis={
+                "gridcolor": THEME_COLORS["border"],
+                "tickfont": {"color": THEME_COLORS["secondary"]},
+                "title": {"text": "Date", "font": {"color": THEME_COLORS["secondary"]}},
+            },
         )
         st.markdown('<div class="rt-section"></div>', unsafe_allow_html=True)
         st.subheader("Equity Curve")
@@ -343,7 +423,7 @@ def main() -> None:
         "Trade log fields are non-percentage values. "
         "entry/exit time is a date; quantity is shares; prices and PnL fields are capital units."
     )
-    trade_frame = pd.DataFrame(result.trades)
+    trade_frame = _styled_trade_log(result.trades)
     st.dataframe(
         trade_frame,
         use_container_width=True,

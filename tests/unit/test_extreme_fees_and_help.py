@@ -1,8 +1,10 @@
 """Tests for stress-cost execution and percentage/non-percentage help metadata."""
 
 import math
+from pathlib import Path
 
 from app.help_text import HELP, tooltip
+from app.main import THEME_COLORS
 from backtesting.runner import run_backtest
 from analytics.metrics import calculate_metrics
 
@@ -41,3 +43,20 @@ def test_percentage_and_non_percentage_definitions_are_explicit() -> None:
     assert "Max Drawdown (%)" in tooltip("max_drawdown")
     assert "Win Rate (%)" in tooltip("win_rate")
     assert "Completed Trades (non-percentage integer count)" in tooltip("completed_trades")
+
+
+def test_midnight_plum_theme_semantic_colors_are_configured() -> None:
+    assert THEME_COLORS["canvas"] == "#13101D"
+    assert THEME_COLORS["card"] == "#1C172B"
+    assert THEME_COLORS["border"] == "#2E2644"
+    assert THEME_COLORS["violet"] == "#A855F7"
+    assert THEME_COLORS["rose"] == "#EC4899"
+    assert THEME_COLORS["positive"] == "#34D399"
+    assert THEME_COLORS["loss"] in {"#FB7185", "#FBBF24"}
+
+    config = (
+        Path(__file__).parents[2] / ".streamlit" / "config.toml"
+    ).read_text(encoding="utf-8")
+    assert 'primaryColor = "#A855F7"' in config
+    assert 'backgroundColor = "#13101D"' in config
+    assert 'secondaryBackgroundColor = "#1C172B"' in config
