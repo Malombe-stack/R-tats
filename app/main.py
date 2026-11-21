@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +172,26 @@ def main() -> None:
             help=tooltip("upload"),
         )
         if uploaded is not None:
-            uploaded_cleaning = clean_ohlcv_csv(uploaded.getvalue())
+            uploaded_bytes = uploaded.getvalue()
+            upload_key = hashlib.sha256(uploaded_bytes).hexdigest()
+            cache_key = f"{uploaded.name}:{len(uploaded_bytes)}:{upload_key}"
+            cached_key = st.session_state.get("uploaded_csv_cache_key")
+            if cached_key != cache_key:
+                try:
+                    uploaded_cleaning = clean_ohlcv_csv(uploaded_bytes)
+                except (OSError, ValueError) as error:
+                    from ingestion.cleaner import CleaningResult
+                    uploaded_cleaning = CleaningResult(
+                        pd.DataFrame(columns=("Date", "Open", "High", "Low", "Close", "Volume")),
+                        (str(error),),
+                        (f"CSV parsing failed: {error}",),
+                    )
+                st.session_state["uploaded_csv_cache_key"] = cache_key
+                st.session_state["uploaded_csv_bytes"] = uploaded_bytes
+                st.session_state["uploaded_csv_name"] = uploaded.name
+                st.session_state["uploaded_cleaning"] = uploaded_cleaning
+            else:
+                uploaded_cleaning = st.session_state.get("uploaded_cleaning")
             if uploaded_cleaning.issues:
                 st.error("CSV compatibility issues detected")
                 for issue in uploaded_cleaning.issues:
@@ -296,12 +316,6 @@ def main() -> None:
             cleaning = uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
-            if cleaning.issues and not auto_clean_run:
-                st.error(
-                    "Compatibility issues were detected. Use "
-                    "'Clean, organize, and run' before analysis."
-                )
-                return
             cleaning_notes = list(cleaning.actions)
             data = validate_ohlcv(cleaning.data, duplicate_policy="raise", cleaning_notes=cleaning_notes)
             metadata = extract_metadata(

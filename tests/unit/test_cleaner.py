@@ -1,8 +1,9 @@
 """Focused tests for uploaded OHLCV compatibility cleaning."""
 
 import pandas as pd
+from io import BytesIO, StringIO
 
-from ingestion.cleaner import clean_ohlcv_dataframe
+from ingestion.cleaner import clean_ohlcv_dataframe, clean_ohlcv_csv
 
 
 def test_cleaner_normalizes_aliases_sanitizes_values_and_sorts_dates() -> None:
@@ -46,3 +47,19 @@ def test_cleaner_reports_missing_required_columns() -> None:
 
     assert result.data.empty
     assert any("Missing required columns" in issue for issue in result.issues)
+
+
+def test_cleaner_accepts_file_like_buffers_and_already_numeric_values() -> None:
+    csv_text = (
+        "Timestamp,Open,High,Low,Close,Volume\n"
+        "20240103,10,12,9,11,100\n"
+        "20240101,9,11,8,10,90\n"
+    )
+    from_buffer = clean_ohlcv_csv(StringIO(csv_text))
+    from_bytes = clean_ohlcv_csv(csv_text.encode("utf-8"))
+    from_binary = clean_ohlcv_csv(BytesIO(csv_text.encode("utf-8")))
+
+    for result in (from_buffer, from_bytes, from_binary):
+        assert result.data["Date"].tolist() == ["2024-01-01", "2024-01-03"]
+        assert result.data["Open"].tolist() == [9.0, 10.0]
+        assert not result.data.isna().any().any()

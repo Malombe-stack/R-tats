@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import BinaryIO
 
@@ -40,6 +40,21 @@ _ALIASES = {
 }
 
 
+def _parse_dates(values: pd.Series) -> pd.Series:
+    """Parse string or numeric dates without confusing numeric bars with ns timestamps."""
+    raw = values.astype("string").str.strip()
+    numeric = pd.to_numeric(raw, errors="coerce")
+    numeric_mask = numeric.notna() & raw.notna()
+    if numeric_mask.all():
+        integer = numeric.dropna()
+        if integer.abs().between(10_000_000, 99_999_999).all():
+            return pd.to_datetime(raw, format="%Y%m%d", errors="coerce")
+        if integer.abs().ge(1_000_000_000).all():
+            unit = "ms" if integer.abs().ge(100_000_000_000).all() else "s"
+            return pd.to_datetime(numeric, unit=unit, errors="coerce")
+    return pd.to_datetime(raw, errors="coerce", format="mixed")
+
+
 def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
     """Normalize aliases and remove unusable OHLCV rows deterministically."""
     if data.empty:
@@ -59,6 +74,8 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
                 issues.append(f"Column alias `{column}` was normalized to `{target}`.")
     if renamed:
         frame = frame.rename(columns=renamed)
+        if frame.columns.duplicated().any():
+            frame = frame.loc[:, ~frame.columns.duplicated(keep="last")]
 
     if len(set(frame.columns) - set(REQUIRED_COLUMNS)) == len(frame.columns):
         issues.append("Required OHLCV column names were not recognized.")
@@ -79,7 +96,7 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
                            "adjclose", "vol"} for column in original_columns):
         actions.append("Only recognized OHLCV columns were retained.")
 
-    parsed = pd.to_datetime(frame["Date"], errors="coerce", format="mixed")
+    parsed = _parse_dates(frame["Date"])
     malformed_dates = int(parsed.isna().sum())
     if malformed_dates:
         issues.append(f"{malformed_dates} row(s) contain unparsed timestamps.")
@@ -149,7 +166,35 @@ def clean_ohlcv_csv(source: str | Path | bytes | BinaryIO | pd.DataFrame) -> Cle
     if isinstance(source, bytes):
         data = pd.read_csv(BytesIO(source))
     elif isinstance(source, str) or isinstance(source, Path):
-        data = pd.read_csv(source)
+        try:
+            data = pd.read_csv(source)
+        except pd.errors.EmptyDataError as error:
+            raise ValueError("The uploaded CSV is empty.") from error
+        except (UnicodeDecodeError, pd.errors.ParserError) as error:
+            raise ValueError("The uploaded CSV could not be parsed.") from error
     else:
-        data = pd.read_csv(source)
+        try:
+            if hasattr(source, "seek"):
+                source.seek(0)
+            data = pd.read_csv(source)
+        except (AttributeError, UnicodeDecodeError, pd.errors.EmptyDataError,
+                pd.errors.ParserError) as error:
+            raise ValueError("The uploaded CSV could not be parsed.") from error
+    if str(data.columns[0]).strip().lower() == "price":
+        try:
+            if isinstance(source, bytes):
+                raw = pd.read_csv(BytesIO(source), header=None)
+            elif isinstance(source, str) or isinstance(source, Path):
+                raw = pd.read_csv(source, header=None)
+            else:
+                if hasattr(source, "seek"):
+                    source.seek(0)
+                raw = pd.read_csv(source, header=None)
+            if len(raw) >= 4:
+                columns = ["Date", *[str(value).strip() for value in raw.iloc[0, 1:]]]
+                normalized = raw.iloc[3:].copy()
+                normalized.columns = columns[: len(normalized.columns)]
+                data = normalized
+        except (UnicodeDecodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+            pass
     return clean_ohlcv_dataframe(data)
