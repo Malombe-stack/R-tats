@@ -5,7 +5,7 @@ import ast
 from pathlib import Path
 
 from app.help_text import HELP, tooltip
-from app.main import THEME_COLORS
+from app.main import THEME_COLORS, build_equity_figure
 from backtesting.runner import run_backtest
 from analytics.metrics import calculate_metrics
 
@@ -96,3 +96,23 @@ def test_all_literal_app_tooltip_keys_exist() -> None:
                     missing.add(argument.value)
 
     assert not missing
+
+
+def test_equity_chart_guards_none_nan_and_extreme_values() -> None:
+    figure = build_equity_figure(
+        [
+            {"timestamp": "2024-01-01", "value": 100.0},
+            {"timestamp": "2024-01-02", "value": float("nan")},
+            {"timestamp": "2024-01-03", "value": float("inf")},
+            {"timestamp": "2024-01-04", "value": 120.0},
+        ],
+        float("nan"),
+        "KES",
+        "KSh",
+    )
+
+    assert isinstance(figure.layout.legend.y, (int, float))
+    assert figure.layout.legend.y == 1.12
+    assert figure.layout.legend.orientation == "h"
+    assert len(figure.data) == 1
+    assert all(math.isfinite(float(value)) for value in figure.data[0].y)

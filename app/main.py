@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 import hashlib
+import math
 from pathlib import Path
 from typing import Any
 
@@ -193,6 +194,99 @@ def _styled_trade_log(trades: tuple[dict[str, Any], ...]) -> Any:
         return f"color: {THEME_COLORS['secondary']}"
 
     return frame.style.map(_pnl_color, subset=["pnl_net"])
+
+
+def _finite_chart_number(value: Any, fallback: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return number if math.isfinite(number) else fallback
+
+
+def build_equity_figure(
+    equity_curve: Any,
+    initial_cash: Any,
+    currency_code: Any,
+    currency_symbol: Any,
+) -> go.Figure:
+    """Build a Plotly chart from finite, typed chart inputs."""
+    code = str(currency_code or "USD")
+    symbol = str(currency_symbol or "$")
+    baseline = _finite_chart_number(initial_cash, 0.0)
+
+    frame = pd.DataFrame(equity_curve) if equity_curve is not None else pd.DataFrame()
+    if not frame.empty:
+        if "timestamp" not in frame.columns:
+            frame["timestamp"] = frame.get("date", "")
+        if "value" not in frame.columns:
+            frame["value"] = frame.get("portfolio_value", baseline)
+        frame["timestamp"] = frame["timestamp"].astype(str)
+        frame["value"] = pd.to_numeric(frame["value"], errors="coerce")
+        frame = frame.replace([float("inf"), float("-inf")], float("nan")).dropna(
+            subset=["value", "timestamp"]
+        )
+    if frame.empty:
+        frame = pd.DataFrame({"timestamp": [], "value": []})
+
+    figure = go.Figure(
+        go.Scatter(
+            x=frame["timestamp"].tolist(),
+            y=[_finite_chart_number(value, baseline) for value in frame["value"].tolist()],
+            name="Portfolio Equity",
+            line={"color": THEME_COLORS["positive"], "width": 2.5},
+            fill="tozeroy",
+            fillcolor="rgba(52,211,153,0.10)",
+            hovertemplate=(
+                "<b>%{x}</b><br>Portfolio equity: "
+                + (symbol if symbol == "$" else "KSh ")
+                + "%{y:,.2f}<extra></extra>"
+            ),
+        )
+    )
+    if math.isfinite(baseline):
+        figure.add_hline(
+            y=baseline,
+            line_dash="dash",
+            line_color=THEME_COLORS["violet"],
+            name="Initial Capital",
+            annotation_text="Initial Capital",
+            annotation_font={"color": THEME_COLORS["secondary"]},
+        )
+    figure.update_layout(
+        margin={"l": 20, "r": 20, "t": 35, "b": 20},
+        paper_bgcolor=THEME_COLORS["card"],
+        plot_bgcolor=THEME_COLORS["card"],
+        font={"color": THEME_COLORS["text"]},
+        legend={
+            "orientation": "h",
+            "y": float(1.12),
+            "font": {"color": THEME_COLORS["secondary"]},
+        },
+        hovermode="x unified",
+        hoverlabel={
+            "bgcolor": THEME_COLORS["canvas"],
+            "bordercolor": THEME_COLORS["rose"],
+            "font": {"color": THEME_COLORS["text"]},
+        },
+        yaxis={
+            "tickformat": ",.2f",
+            "tickprefix": "$" if symbol == "$" else "KSh ",
+            "gridcolor": THEME_COLORS["border"],
+            "zerolinecolor": THEME_COLORS["violet"],
+            "tickfont": {"color": THEME_COLORS["secondary"]},
+            "title": {
+                "text": f"Portfolio equity ({code} capital units)",
+                "font": {"color": THEME_COLORS["secondary"]},
+            },
+        },
+        xaxis={
+            "gridcolor": THEME_COLORS["border"],
+            "tickfont": {"color": THEME_COLORS["secondary"]},
+            "title": {"text": "Date", "font": {"color": THEME_COLORS["secondary"]}},
+        },
+    )
+    return figure
 
 
 def main() -> None:
@@ -486,61 +580,11 @@ def main() -> None:
         column.metric(label, display_value, help=tooltip(help_name))
     equity = pd.DataFrame(result.equity_curve) if result.equity_curve else None
     if equity is not None:
-        figure = go.Figure(
-            go.Scatter(
-                x=equity["timestamp"],
-                y=equity["value"],
-                name="Portfolio Equity",
-                line={"color": THEME_COLORS["positive"], "width": 2.5},
-                fill="tozeroy",
-                fillcolor="rgba(52,211,153,0.10)",
-                hovertemplate=(
-                    "<b>%{x}</b><br>Portfolio equity: "
-                    + (currency_symbol if currency_symbol == "$" else "KSh ")
-                    + "%{y:,.2f}<extra></extra>"
-                ),
-            )
-        )
-        figure.add_hline(
-            y=result.initial_cash,
-            line_dash="dash",
-            line_color=THEME_COLORS["violet"],
-            name="Initial Capital",
-            annotation_text="Initial Capital",
-            annotation_font={"color": THEME_COLORS["secondary"]},
-        )
-        figure.update_layout(
-            margin={"l": 20, "r": 20, "t": 35, "b": 20},
-            paper_bgcolor=THEME_COLORS["card"],
-            plot_bgcolor=THEME_COLORS["card"],
-            font={"color": THEME_COLORS["text"]},
-            legend={
-                "orientation": "h",
-                "y": 1.12,
-                "font": {"color": THEME_COLORS["secondary"]},
-            },
-            hovermode="x unified",
-            hoverlabel={
-                "bgcolor": THEME_COLORS["canvas"],
-                "bordercolor": THEME_COLORS["rose"],
-                "font": {"color": THEME_COLORS["text"]},
-            },
-            yaxis={
-                "tickformat": ",.2f",
-                "tickprefix": "$" if currency_symbol == "$" else "KSh ",
-                "gridcolor": THEME_COLORS["border"],
-                "zerolinecolor": THEME_COLORS["violet"],
-                "tickfont": {"color": THEME_COLORS["secondary"]},
-                "title": {
-                    "text": f"Portfolio equity ({currency_code} capital units)",
-                    "font": {"color": THEME_COLORS["secondary"]},
-                },
-            },
-            xaxis={
-                "gridcolor": THEME_COLORS["border"],
-                "tickfont": {"color": THEME_COLORS["secondary"]},
-                "title": {"text": "Date", "font": {"color": THEME_COLORS["secondary"]}},
-            },
+        figure = build_equity_figure(
+            equity,
+            result.initial_cash,
+            currency_code,
+            currency_symbol,
         )
         st.markdown('<div class="rt-section"></div>', unsafe_allow_html=True)
         st.subheader("Equity Curve")
