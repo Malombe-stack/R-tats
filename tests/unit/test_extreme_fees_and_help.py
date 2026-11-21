@@ -5,7 +5,14 @@ import ast
 from pathlib import Path
 
 from app.help_text import HELP, tooltip
-from app.main import THEME_COLORS
+from app.main import (
+    THEME_COLORS,
+    build_equity_figure,
+    normalize_cleaning_notes,
+    _safe_cleaning_count,
+    _safe_uploaded_name,
+    _safe_uploaded_bytes,
+)
 from backtesting.runner import run_backtest
 from analytics.metrics import calculate_metrics
 
@@ -96,3 +103,26 @@ def test_all_literal_app_tooltip_keys_exist() -> None:
                     missing.add(argument.value)
 
     assert not missing
+
+
+def test_chart_and_upload_cleaning_guards() -> None:
+    figure = build_equity_figure(
+        [
+            {"timestamp": "2024-01-01", "value": 100.0},
+            {"timestamp": "2024-01-02", "value": float("nan")},
+            {"timestamp": "2024-01-03", "value": float("inf")},
+        ],
+        float("nan"),
+        "KES",
+        "KSh",
+    )
+    assert figure.layout.legend.y == 1.12
+    assert figure.layout.legend.orientation == "h"
+    assert all(math.isfinite(float(value)) for value in figure.data[0].y)
+
+    assert normalize_cleaning_notes(None) == []
+    assert normalize_cleaning_notes(("one", None, "two")) == ["one", "two"]
+    assert _safe_cleaning_count(None) == 0
+    assert _safe_cleaning_count("bad") == 0
+    assert _safe_uploaded_name(None) == "uploaded.csv"
+    assert _safe_uploaded_bytes(None) == b""

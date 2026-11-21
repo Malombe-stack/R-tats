@@ -45,7 +45,16 @@ class CleaningResult:
 def normalize_cleaning_result(value: object) -> CleaningResult:
     """Normalize dataclass, dict, or empty session values into a safe result."""
     if isinstance(value, CleaningResult):
-        return value
+        data = value.data if isinstance(value.data, pd.DataFrame) else pd.DataFrame()
+        issues = tuple(str(item) for item in (value.issues or ()) if item is not None)
+        actions = tuple(str(item) for item in (value.actions or ()) if item is not None)
+        return CleaningResult(
+            data=data,
+            issues=issues,
+            actions=actions,
+            source_row_count=_safe_count(value.source_row_count, len(data)),
+            usable_row_count=_safe_count(value.usable_row_count, len(data)),
+        )
     if isinstance(value, dict):
         data = value.get("data")
         if not isinstance(data, pd.DataFrame):
@@ -76,6 +85,14 @@ def normalize_cleaning_result(value: object) -> CleaningResult:
         source_row_count=0,
         usable_row_count=0,
     )
+
+
+def _safe_count(value: object, fallback: int = 0) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return max(0, fallback)
+    return max(0, number)
 
 
 def _normalized_key(value: object) -> str:

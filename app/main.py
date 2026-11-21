@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import sys
 import hashlib
+import math
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +136,51 @@ def _cleaned_csv_bytes(cleaned: pd.DataFrame) -> bytes:
     return cleaned.to_csv(index=False).encode("utf-8")
 
 
+def _safe_uploaded_name(uploaded: Any, fallback: str = "uploaded.csv") -> str:
+    name = getattr(uploaded, "name", None)
+    return name.strip() if isinstance(name, str) and name.strip() else fallback
+
+
+def _safe_uploaded_bytes(uploaded: Any) -> bytes:
+    if uploaded is None:
+        return b""
+    getter = getattr(uploaded, "getvalue", None)
+    if callable(getter):
+        try:
+            value = getter()
+        except (AttributeError, OSError, TypeError, ValueError):
+            return b""
+    else:
+        value = getattr(uploaded, "value", b"")
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return b""
+
+
+def _safe_cleaning_count(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, number)
+
+
+def normalize_cleaning_notes(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [str(value)]
+    if isinstance(value, Iterable):
+        return [str(note) for note in value if note is not None]
+    return [str(value)]
+
+
 @st.cache_data(show_spinner=False)
 def _clean_uploaded_bytes(payload: bytes) -> CleaningResult:
     """Cache deterministic cleaning of unchanged uploaded bytes."""
@@ -195,6 +242,78 @@ def _styled_trade_log(trades: tuple[dict[str, Any], ...]) -> Any:
     return frame.style.map(_pnl_color, subset=["pnl_net"])
 
 
+def _finite_chart_number(value: Any, fallback: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return fallback
+    return number if math.isfinite(number) else fallback
+
+
+def build_equity_figure(
+    equity_curve: Any,
+    initial_cash: Any,
+    currency_code: Any,
+    currency_symbol: Any,
+) -> go.Figure:
+    code = str(currency_code or "USD")
+    symbol = str(currency_symbol or "$")
+    baseline = _finite_chart_number(initial_cash, 0.0)
+    if isinstance(equity_curve, dict):
+        rows = [equity_curve]
+    elif isinstance(equity_curve, Iterable) and not isinstance(equity_curve, (str, bytes)):
+        rows = [row for row in equity_curve if isinstance(row, dict)]
+    else:
+        rows = []
+    frame = pd.DataFrame(rows)
+    if not frame.empty:
+        if "timestamp" not in frame.columns:
+            frame["timestamp"] = frame.get("date", "")
+        if "value" not in frame.columns:
+            frame["value"] = frame.get("portfolio_value", baseline)
+        frame["timestamp"] = frame["timestamp"].astype(str)
+        frame["value"] = pd.to_numeric(frame["value"], errors="coerce")
+        frame = frame.replace([float("inf"), float("-inf")], float("nan")).dropna(
+            subset=["value", "timestamp"]
+        )
+    if frame.empty:
+        frame = pd.DataFrame({"timestamp": [], "value": []})
+    figure = go.Figure(go.Scatter(
+        x=frame["timestamp"].tolist(),
+        y=[_finite_chart_number(value, baseline) for value in frame["value"].tolist()],
+        name="Portfolio Equity",
+        line={"color": THEME_COLORS["positive"], "width": 2.5},
+        fill="tozeroy",
+        fillcolor="rgba(52,211,153,0.10)",
+        hovertemplate=(
+            "<b>%{x}</b><br>Portfolio equity: "
+            + (symbol if symbol == "$" else "KSh ")
+            + "%{y:,.2f}<extra></extra>"
+        ),
+    ))
+    if math.isfinite(baseline):
+        figure.add_hline(
+            y=baseline,
+            line_dash="dash",
+            line_color=THEME_COLORS["violet"],
+            name="Initial Capital",
+            annotation_text="Initial Capital",
+            annotation_font={"color": THEME_COLORS["secondary"]},
+        )
+    figure.update_layout(
+        margin={"l": 20, "r": 20, "t": 35, "b": 20},
+        paper_bgcolor=THEME_COLORS["card"],
+        plot_bgcolor=THEME_COLORS["card"],
+        font={"color": THEME_COLORS["text"]},
+        legend={"orientation": "h", "y": float(1.12), "font": {"color": THEME_COLORS["secondary"]}},
+        hovermode="x unified",
+        hoverlabel={"bgcolor": THEME_COLORS["canvas"], "bordercolor": THEME_COLORS["rose"], "font": {"color": THEME_COLORS["text"]}},
+        yaxis={"tickformat": ",.2f", "tickprefix": "$" if symbol == "$" else "KSh ", "gridcolor": THEME_COLORS["border"], "zerolinecolor": THEME_COLORS["violet"], "tickfont": {"color": THEME_COLORS["secondary"]}, "title": {"text": f"Portfolio equity ({code} capital units)", "font": {"color": THEME_COLORS["secondary"]}}},
+        xaxis={"gridcolor": THEME_COLORS["border"], "tickfont": {"color": THEME_COLORS["secondary"]}, "title": {"text": "Date", "font": {"color": THEME_COLORS["secondary"]}}},
+    )
+    return figure
+
+
 def main() -> None:
     """Render the dashboard."""
     st.set_page_config(
@@ -212,6 +331,7 @@ def main() -> None:
     )
     st.warning(DISCLAIMER)
     uploaded_cleaning: CleaningResult | None = None
+    uploaded_name = "uploaded.csv"
     with st.sidebar:
         st.header("Simulation Configuration")
         st.caption("Upload OHLCV data or use a bundled deterministic dataset.")
@@ -221,9 +341,10 @@ def main() -> None:
             help=tooltip("upload"),
         )
         if uploaded is not None:
-            uploaded_bytes = uploaded.getvalue()
+            uploaded_name = _safe_uploaded_name(uploaded)
+            uploaded_bytes = _safe_uploaded_bytes(uploaded)
             upload_key = hashlib.sha256(uploaded_bytes).hexdigest()
-            cache_key = f"{uploaded.name}:{len(uploaded_bytes)}:{upload_key}"
+            cache_key = f"{uploaded_name}:{len(uploaded_bytes)}:{upload_key}"
             cached_key = st.session_state.get("uploaded_csv_cache_key")
             if cached_key != cache_key:
                 try:
@@ -239,7 +360,7 @@ def main() -> None:
                     )
                 st.session_state["uploaded_csv_cache_key"] = cache_key
                 st.session_state["uploaded_csv_bytes"] = uploaded_bytes
-                st.session_state["uploaded_csv_name"] = uploaded.name
+                st.session_state["uploaded_csv_name"] = uploaded_name
                 st.session_state["uploaded_cleaning"] = uploaded_cleaning
             else:
                 uploaded_cleaning = normalize_cleaning_result(
@@ -382,12 +503,12 @@ def main() -> None:
     try:
         if uploaded is not None:
             cleaning = normalize_cleaning_result(
-                uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
+                uploaded_cleaning or clean_ohlcv_csv(_safe_uploaded_bytes(uploaded))
             )
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
             post_clean_check = clean_ohlcv_dataframe(cleaning.data)
-            cleaning_notes = []
+            cleaning_notes = normalize_cleaning_notes(None)
             if cleaning.issues:
                 cleaning_notes.extend(f"Issue detected: {issue}" for issue in cleaning.issues)
             if cleaning.modifications:
@@ -395,8 +516,8 @@ def main() -> None:
                     f"Cleaning action: {action}" for action in cleaning.modifications
                 )
             cleaning_notes.append(
-                f"Extraction/cleaning count: kept {cleaning.usable_row_count} usable row(s) "
-                f"from {cleaning.source_row_count} source row(s); extracted 6 required OHLCV columns."
+                f"Extraction/cleaning count: kept {_safe_cleaning_count(cleaning.usable_row_count)} usable row(s) "
+                f"from {_safe_cleaning_count(cleaning.source_row_count)} source row(s); extracted 6 required OHLCV columns."
             )
             if post_clean_check.issues:
                 cleaning_notes.extend(
@@ -405,19 +526,19 @@ def main() -> None:
                 )
             else:
                 cleaning_notes.append(
-                    f"Post-clean verification passed: {len(cleaning.data)} usable row(s) remain "
+                    f"Post-clean verification passed: {_safe_cleaning_count(len(cleaning.data))} usable row(s) remain "
                     "with normalized columns, chronological dates, and valid OHLCV values."
                 )
             data = validate_ohlcv(cleaning.data, duplicate_policy="raise", cleaning_notes=cleaning_notes)
             metadata = extract_metadata(
                 data,
-                source=uploaded.name,
+                source=uploaded_name,
                 instrument="",
                 cleaning_notes=cleaning_notes,
             )
         else:
             data, metadata = _load_bundled_cached(str(selected_path), instrument)
-            cleaning_notes = list(metadata.cleaning_notes)
+            cleaning_notes = normalize_cleaning_notes(metadata.cleaning_notes)
         result = _run_backtest_cached(
             data,
             strategy,
@@ -484,63 +605,22 @@ def main() -> None:
         else:
             display_value = _kpi_value(value, name)
         column.metric(label, display_value, help=tooltip(help_name))
-    equity = pd.DataFrame(result.equity_curve) if result.equity_curve else None
-    if equity is not None:
-        figure = go.Figure(
-            go.Scatter(
-                x=equity["timestamp"],
-                y=equity["value"],
-                name="Portfolio Equity",
-                line={"color": THEME_COLORS["positive"], "width": 2.5},
-                fill="tozeroy",
-                fillcolor="rgba(52,211,153,0.10)",
-                hovertemplate=(
-                    "<b>%{x}</b><br>Portfolio equity: "
-                    + (currency_symbol if currency_symbol == "$" else "KSh ")
-                    + "%{y:,.2f}<extra></extra>"
-                ),
-            )
-        )
-        figure.add_hline(
-            y=result.initial_cash,
-            line_dash="dash",
-            line_color=THEME_COLORS["violet"],
-            name="Initial Capital",
-            annotation_text="Initial Capital",
-            annotation_font={"color": THEME_COLORS["secondary"]},
-        )
-        figure.update_layout(
-            margin={"l": 20, "r": 20, "t": 35, "b": 20},
-            paper_bgcolor=THEME_COLORS["card"],
-            plot_bgcolor=THEME_COLORS["card"],
-            font={"color": THEME_COLORS["text"]},
-            legend={
-                "orientation": "h",
-                "y": 1.12,
-                "font": {"color": THEME_COLORS["secondary"]},
-            },
-            hovermode="x unified",
-            hoverlabel={
-                "bgcolor": THEME_COLORS["canvas"],
-                "bordercolor": THEME_COLORS["rose"],
-                "font": {"color": THEME_COLORS["text"]},
-            },
-            yaxis={
-                "tickformat": ",.2f",
-                "tickprefix": "$" if currency_symbol == "$" else "KSh ",
-                "gridcolor": THEME_COLORS["border"],
-                "zerolinecolor": THEME_COLORS["violet"],
-                "tickfont": {"color": THEME_COLORS["secondary"]},
-                "title": {
-                    "text": f"Portfolio equity ({currency_code} capital units)",
-                    "font": {"color": THEME_COLORS["secondary"]},
-                },
-            },
-            xaxis={
-                "gridcolor": THEME_COLORS["border"],
-                "tickfont": {"color": THEME_COLORS["secondary"]},
-                "title": {"text": "Date", "font": {"color": THEME_COLORS["secondary"]}},
-            },
+    result_equity = getattr(result, "equity_curve", ()) or ()
+    equity_rows = (
+        [result_equity]
+        if isinstance(result_equity, dict)
+        else [
+            row for row in result_equity
+            if isinstance(row, dict)
+        ] if isinstance(result_equity, Iterable) and not isinstance(result_equity, (str, bytes))
+        else []
+    )
+    if equity_rows:
+        figure = build_equity_figure(
+            equity_rows,
+            getattr(result, "initial_cash", 0.0),
+            currency_code,
+            currency_symbol,
         )
         st.markdown('<div class="rt-section"></div>', unsafe_allow_html=True)
         st.subheader("Equity Curve")
