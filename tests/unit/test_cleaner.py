@@ -3,7 +3,11 @@
 import pandas as pd
 from io import BytesIO, StringIO
 
-from ingestion.cleaner import clean_ohlcv_dataframe, clean_ohlcv_csv
+from ingestion.cleaner import (
+    clean_ohlcv_dataframe,
+    clean_ohlcv_csv,
+    normalize_cleaning_result,
+)
 
 
 def test_cleaner_normalizes_aliases_sanitizes_values_and_sorts_dates() -> None:
@@ -108,3 +112,29 @@ def test_messy_extra_columns_aliases_duplicates_and_formatted_numbers() -> None:
     assert result.modifications
     assert result.source_row_count == 4
     assert result.usable_row_count == 3
+
+
+def test_cleaning_result_normalizes_none_and_dict_shapes() -> None:
+    missing = normalize_cleaning_result(None)
+    assert isinstance(missing.data, pd.DataFrame)
+    assert missing.data.empty
+    assert missing.modifications
+
+    dictionary = normalize_cleaning_result({
+        "data": pd.DataFrame({
+            "Date": ["2024-01-01"],
+            "Open": [10],
+            "High": [11],
+            "Low": [9],
+            "Close": [10],
+            "Volume": [100],
+        }),
+        "issues": ["Duplicate timestamp"],
+        "modifications": ["Removed 1 duplicate timestamp"],
+        "source_row_count": 2,
+        "usable_row_count": 1,
+    })
+    assert not dictionary.data.empty
+    assert dictionary.modifications == ("Removed 1 duplicate timestamp",)
+    assert dictionary.source_row_count == 2
+    assert dictionary.usable_row_count == 1

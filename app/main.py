@@ -22,7 +22,12 @@ from analytics.report_exports import report_to_pdf, report_to_txt
 from app.currency import resolve_market_currency
 from app.help_text import tooltip
 from backtesting.runner import run_backtest
-from ingestion.cleaner import CleaningResult, clean_ohlcv_csv, clean_ohlcv_dataframe
+from ingestion.cleaner import (
+    CleaningResult,
+    clean_ohlcv_csv,
+    clean_ohlcv_dataframe,
+    normalize_cleaning_result,
+)
 from ingestion.loader import load_csv
 from ingestion.validator import extract_metadata, validate_ohlcv
 
@@ -192,7 +197,9 @@ def main() -> None:
                 st.session_state["uploaded_csv_name"] = uploaded.name
                 st.session_state["uploaded_cleaning"] = uploaded_cleaning
             else:
-                uploaded_cleaning = st.session_state.get("uploaded_cleaning")
+                uploaded_cleaning = normalize_cleaning_result(
+                    st.session_state.get("uploaded_cleaning")
+                )
             if uploaded_cleaning.data.empty:
                 st.error("Issues detected")
                 for issue in uploaded_cleaning.issues:
@@ -329,7 +336,9 @@ def main() -> None:
         return
     try:
         if uploaded is not None:
-            cleaning = uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
+            cleaning = normalize_cleaning_result(
+                uploaded_cleaning or clean_ohlcv_csv(uploaded.getvalue())
+            )
             if cleaning.data.empty:
                 raise ValueError("The uploaded CSV has no usable rows or missing required columns.")
             post_clean_check = clean_ohlcv_dataframe(cleaning.data)

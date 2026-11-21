@@ -42,6 +42,34 @@ class CleaningResult:
         )
 
 
+def normalize_cleaning_result(value: object) -> CleaningResult:
+    """Normalize dataclass, dict, or empty session values into a safe result."""
+    if isinstance(value, CleaningResult):
+        return value
+    if isinstance(value, dict):
+        data = value.get("data")
+        if not isinstance(data, pd.DataFrame):
+            data = pd.DataFrame()
+        issues_value = value.get("issues", ())
+        actions_value = value.get("actions", value.get("modifications", ()))
+        issues = tuple(str(item) for item in issues_value) if isinstance(issues_value, (list, tuple, set)) else ()
+        actions = tuple(str(item) for item in actions_value) if isinstance(actions_value, (list, tuple, set)) else ()
+        return CleaningResult(
+            data=data,
+            issues=issues,
+            actions=actions,
+            source_row_count=int(value.get("source_row_count", len(data)) or 0),
+            usable_row_count=int(value.get("usable_row_count", len(data)) or 0),
+        )
+    return CleaningResult(
+        data=pd.DataFrame(columns=REQUIRED_COLUMNS),
+        issues=("The uploaded CSV result could not be restored.",),
+        actions=("CSV parsing failed safely; re-upload the file.",),
+        source_row_count=0,
+        usable_row_count=0,
+    )
+
+
 def _normalized_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).strip().lower())
 
