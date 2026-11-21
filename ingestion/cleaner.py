@@ -54,12 +54,20 @@ def normalize_cleaning_result(value: object) -> CleaningResult:
         actions_value = value.get("actions", value.get("modifications", ()))
         issues = tuple(str(item) for item in issues_value) if isinstance(issues_value, (list, tuple, set)) else ()
         actions = tuple(str(item) for item in actions_value) if isinstance(actions_value, (list, tuple, set)) else ()
+        try:
+            source_count = int(value.get("source_row_count", len(data)) or 0)
+        except (TypeError, ValueError):
+            source_count = len(data)
+        try:
+            usable_count = int(value.get("usable_row_count", len(data)) or 0)
+        except (TypeError, ValueError):
+            usable_count = len(data)
         return CleaningResult(
             data=data,
             issues=issues,
             actions=actions,
-            source_row_count=int(value.get("source_row_count", len(data)) or 0),
-            usable_row_count=int(value.get("usable_row_count", len(data)) or 0),
+            source_row_count=max(0, source_count),
+            usable_row_count=max(0, usable_count),
         )
     return CleaningResult(
         data=pd.DataFrame(columns=REQUIRED_COLUMNS),
@@ -142,7 +150,13 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
         issues.append(f"Missing required columns: {', '.join(missing)}.")
         actions.append("Column names were inspected, but missing columns cannot be inferred.")
         empty = pd.DataFrame(columns=REQUIRED_COLUMNS)
-        return CleaningResult(empty, tuple(issues), tuple(actions))
+        return CleaningResult(
+            empty,
+            tuple(issues),
+            tuple(actions),
+            source_row_count=source_row_count,
+            usable_row_count=0,
+        )
 
     frame = frame.loc[:, REQUIRED_COLUMNS].copy()
     if list(frame.columns) != list(REQUIRED_COLUMNS):
@@ -178,6 +192,7 @@ def clean_ohlcv_dataframe(data: pd.DataFrame) -> CleaningResult:
             .str.replace(r"\((.*)\)", r"-\1", regex=True)
         )
         converted = pd.to_numeric(sanitized, errors="coerce")
+        converted = converted.replace([float("inf"), float("-inf")], pd.NA)
         numeric_issues = int(converted.isna().sum())
         if numeric_issues:
             issues.append(f"{numeric_issues} value(s) in {column} could not be parsed.")

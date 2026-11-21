@@ -40,8 +40,8 @@ def report_to_pdf(report_markdown: str) -> bytes:
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-    except ImportError as error:
-        raise RuntimeError("PDF export requires the reportlab package.") from error
+    except ImportError:
+        return _fallback_pdf(report_to_txt(report_markdown))
 
     text = report_to_txt(report_markdown)
     buffer = io.BytesIO()
@@ -86,3 +86,45 @@ def report_to_pdf(report_markdown: str) -> bytes:
             flowables.append(Paragraph(escaped, styles["BodyText"]))
     document.build(flowables)
     return buffer.getvalue()
+
+
+def _fallback_pdf(text: str) -> bytes:
+    """Create a valid one-page PDF if ReportLab is unavailable."""
+    lines = text.splitlines()
+    escaped_lines = [
+        line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        for line in lines[:55]
+    ]
+    stream_parts = ["BT", "/F1 9 Tf", "54 738 Td", "11 TL"]
+    for index, line in enumerate(escaped_lines):
+        if index:
+            stream_parts.append("T*")
+        stream_parts.append(f"({line[:180]}) Tj")
+    stream_parts.append("ET")
+    stream = "\n".join(stream_parts).encode("latin-1", "replace")
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n"
+        + stream + b"\nendstream",
+    ]
+    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{number} 0 obj\n".encode("ascii"))
+        pdf.extend(body)
+        pdf.extend(b"\nendobj\n")
+    xref_offset = len(pdf)
+    pdf.extend(b"xref\n0 6\n")
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(pdf)

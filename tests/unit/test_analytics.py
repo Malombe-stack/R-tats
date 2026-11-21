@@ -20,3 +20,20 @@ def test_tc12_empty_trades() -> None:
     assert metrics["trade_count"] == 0
     assert metrics["win_rate"] is None
     assert metrics["calculation_notes"]["win_rate"] == "Undefined: 0 completed trades"
+
+
+def test_finite_guards_filter_nan_and_infinite_values() -> None:
+    metrics = calculate_metrics(
+        100.0,
+        float("inf"),
+        [
+            {"value": 100.0},
+            {"value": float("nan")},
+            {"value": 90.0},
+            {"value": float("inf")},
+        ],
+        [{"pnl_net": float("nan")}, {"pnl_net": 5.0}, {"pnl_net": -2.0}],
+    )
+    assert metrics["total_return"] == 0.0
+    assert metrics["win_rate"] == 50.0
+    assert metrics["profit_factor"] == 2.5

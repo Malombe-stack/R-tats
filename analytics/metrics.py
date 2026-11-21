@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from math import sqrt
+from math import isfinite, sqrt
 from typing import Any, Sequence
 
 import numpy as np
@@ -34,6 +34,7 @@ def calculate_metrics(
          or "status" not in row],
         dtype=float,
     )
+    pnls = pnls[np.isfinite(pnls)]
     if len(values) > 1:
         previous = values[:-1]
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
@@ -58,11 +59,18 @@ def calculate_metrics(
         notes["sharpe_ratio"] = "Undefined: insufficient observations or zero variance"
     if len(values):
         peaks = np.maximum.accumulate(values)
-        max_drawdown = float(np.max((peaks - values) / peaks) * 100)
+        safe_peaks = np.where(peaks > 0, peaks, np.nan)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            drawdowns = (peaks - values) / safe_peaks
+        drawdowns = drawdowns[np.isfinite(drawdowns)]
+        max_drawdown = float(np.max(drawdowns) * 100) if len(drawdowns) else 0.0
     else:
         max_drawdown = 0.0
+    total_change = (final_value - initial_cash) / initial_cash * 100
+    if not isfinite(total_change):
+        total_change = 0.0
     return {
-        "total_return": float((final_value - initial_cash) / initial_cash * 100),
+        "total_return": float(total_change),
         "win_rate": win_rate,
         "profit_factor": profit_factor,
         "sharpe_ratio": sharpe,

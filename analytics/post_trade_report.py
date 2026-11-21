@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any, Iterable, Sequence
 
 
 def _number(value: Any, digits: int = 2) -> str:
     try:
-        return f"{float(value):,.{digits}f}"
+        number = float(value)
     except (TypeError, ValueError):
         return "N/A"
+    if not isfinite(number):
+        return "N/A"
+    return f"{number:,.{digits}f}"
 
 
 def _money(value: Any, currency_code: str, currency_symbol: str, digits: int = 2) -> str:
@@ -27,6 +31,14 @@ def _closed_trades(trades: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return [trade for trade in trades if str(trade.get("status", "Closed")).lower() in {"closed", "completed"}]
 
 
+def _finite_float(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return number if isfinite(number) else 0.0
+
+
 def _risk_rejections(orders: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     blocked_statuses = {"risk rejected", "canceled", "cancelled", "margin", "rejected"}
     return [
@@ -41,11 +53,11 @@ def _flat_periods(equity_curve: Sequence[dict[str, Any]]) -> list[tuple[str, str
     periods: list[tuple[str, str, int]] = []
     start = str(equity_curve[0].get("timestamp", equity_curve[0].get("date", "")))
     previous = str(equity_curve[0].get("timestamp", equity_curve[0].get("date", "")))
-    previous_value = float(equity_curve[0].get("value", equity_curve[0].get("portfolio_value", 0)))
+    previous_value = _finite_float(equity_curve[0].get("value", equity_curve[0].get("portfolio_value", 0)))
     length = 1
     for row in equity_curve[1:]:
         date = str(row.get("timestamp", row.get("date", "")))
-        value = float(row.get("value", row.get("portfolio_value", previous_value)))
+        value = _finite_float(row.get("value", row.get("portfolio_value", previous_value)))
         if value == previous_value:
             length += 1
             previous = date
@@ -72,28 +84,28 @@ def generate_post_trade_risk_report(
 ) -> str:
     """Generate an audit report without changing simulation data."""
     trades = _closed_trades(result.trades)
-    winning = [trade for trade in trades if float(trade.get("pnl_net", trade.get("profit_loss", 0))) > 0]
-    losing = [trade for trade in trades if float(trade.get("pnl_net", trade.get("profit_loss", 0))) < 0]
+    winning = [trade for trade in trades if _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) > 0]
+    losing = [trade for trade in trades if _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) < 0]
     low_margin = [
         trade for trade in trades
-        if 0 <= float(trade.get("pnl_net", trade.get("profit_loss", 0))) <= result.initial_cash * 0.001
+        if 0 <= _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) <= result.initial_cash * 0.001
     ]
 
     strongest = max(
         trades,
-        key=lambda trade: float(trade.get("pnl_net", trade.get("profit_loss", 0))),
+        key=lambda trade: _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))),
         default=None,
     )
     weakest = min(
         trades,
-        key=lambda trade: float(trade.get("pnl_net", trade.get("profit_loss", 0))),
+        key=lambda trade: _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))),
         default=None,
     )
     average_bars = (
         sum(int(trade.get("bar_length", 0)) for trade in trades) / len(trades)
         if trades else 0.0
     )
-    total_net = sum(float(trade.get("pnl_net", trade.get("profit_loss", 0))) for trade in trades)
+    total_net = sum(_finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) for trade in trades)
     blocked = _risk_rejections(result.orders)
     flats = _flat_periods(result.equity_curve)
     short_trades = sum(

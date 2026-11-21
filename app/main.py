@@ -134,6 +134,49 @@ def _cleaned_csv_bytes(cleaned: pd.DataFrame) -> bytes:
     return cleaned.to_csv(index=False).encode("utf-8")
 
 
+@st.cache_data(show_spinner=False)
+def _clean_uploaded_bytes(payload: bytes) -> CleaningResult:
+    """Cache deterministic cleaning of unchanged uploaded bytes."""
+    return clean_ohlcv_csv(payload)
+
+
+@st.cache_data(show_spinner=False)
+def _load_bundled_cached(path_text: str, instrument: str) -> tuple[pd.DataFrame, Any]:
+    return load_csv(Path(path_text), instrument=instrument)
+
+
+@st.cache_data(show_spinner=False)
+def _run_backtest_cached(
+    data: pd.DataFrame,
+    strategy: str,
+    initial_cash: float,
+    commission: float,
+    slippage: float,
+    parameters_json: tuple[tuple[str, Any], ...],
+    position_size_pct: float,
+) -> Any:
+    parameters = dict(parameters_json)
+    return run_backtest(
+        data,
+        strategy,
+        initial_cash,
+        commission,
+        slippage,
+        parameters,
+        position_size_pct=position_size_pct,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _calculate_metrics_cached(
+    initial_cash: float,
+    final_value: float,
+    equity_curve: tuple[dict[str, Any], ...],
+    trades: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    return calculate_metrics(initial_cash, final_value, equity_curve, trades)
+
+
 def _styled_trade_log(trades: tuple[dict[str, Any], ...]) -> Any:
     frame = pd.DataFrame(trades)
     if frame.empty or "pnl_net" not in frame.columns:
@@ -184,7 +227,9 @@ def main() -> None:
             cached_key = st.session_state.get("uploaded_csv_cache_key")
             if cached_key != cache_key:
                 try:
-                    uploaded_cleaning = clean_ohlcv_csv(uploaded_bytes)
+                    uploaded_cleaning = normalize_cleaning_result(
+                        _clean_uploaded_bytes(uploaded_bytes)
+                    )
                 except (OSError, ValueError) as error:
                     from ingestion.cleaner import CleaningResult
                     uploaded_cleaning = CleaningResult(
@@ -371,10 +416,15 @@ def main() -> None:
                 cleaning_notes=cleaning_notes,
             )
         else:
-            data, metadata = load_csv(selected_path, instrument=instrument)
+            data, metadata = _load_bundled_cached(str(selected_path), instrument)
             cleaning_notes = list(metadata.cleaning_notes)
-        result = run_backtest(
-            data, strategy, initial_cash, commission, slippage, parameters,
+        result = _run_backtest_cached(
+            data,
+            strategy,
+            initial_cash,
+            commission,
+            slippage,
+            tuple(sorted(parameters.items())),
             position_size_pct=position_size_pct,
         )
         currency_source = (
@@ -389,7 +439,7 @@ def main() -> None:
         trade_currency_format = (
             "$%.4f" if currency_symbol == "$" else "KSh %.4f"
         )
-        metrics = calculate_metrics(
+        metrics = _calculate_metrics_cached(
             result.initial_cash, result.final_value, result.equity_curve, result.trades
         )
     except (OSError, ValueError) as error:

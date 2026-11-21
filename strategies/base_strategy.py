@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from math import isfinite
 
 import backtrader as bt
 
@@ -30,6 +31,8 @@ class BaseStrategy(bt.Strategy):
         if self.p.stake:
             return float(self.p.stake)
         price = float(self.data.close[0])
+        if not isfinite(price) or price <= 0:
+            return 0.0
         return float(int(self.broker.getcash() * self.p.position_size_pct / price))
 
     def record_risk_rejection(self, reason: str) -> None:

@@ -138,3 +138,11 @@ def test_cleaning_result_normalizes_none_and_dict_shapes() -> None:
     assert dictionary.modifications == ("Removed 1 duplicate timestamp",)
     assert dictionary.source_row_count == 2
     assert dictionary.usable_row_count == 1
+
+    malformed_counts = normalize_cleaning_result({
+        "data": pd.DataFrame(),
+        "source_row_count": "unknown",
+        "usable_row_count": None,
+    })
+    assert malformed_counts.source_row_count == 0
+    assert malformed_counts.usable_row_count == 0
