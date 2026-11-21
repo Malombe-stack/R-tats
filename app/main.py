@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from analytics.metrics import calculate_metrics
 from analytics.post_trade_report import generate_post_trade_risk_report
 from analytics.report_exports import report_to_pdf, report_to_txt
+from app.currency import resolve_market_currency
 from app.help_text import tooltip
 from backtesting.runner import run_backtest
 from ingestion.cleaner import CleaningResult, clean_ohlcv_csv
@@ -331,6 +332,18 @@ def main() -> None:
             data, strategy, initial_cash, commission, slippage, parameters,
             position_size_pct=position_size_pct,
         )
+        currency_source = (
+            uploaded.name if uploaded is not None
+            else str(selected_path)
+        )
+        currency_code, currency_symbol = resolve_market_currency(
+            currency_source,
+            instrument,
+            metadata.instrument,
+        )
+        trade_currency_format = (
+            "$%.4f" if currency_symbol == "$" else "KSh %.4f"
+        )
         metrics = calculate_metrics(
             result.initial_cash, result.final_value, result.equity_curve, result.trades
         )
@@ -386,7 +399,11 @@ def main() -> None:
                 line={"color": THEME_COLORS["positive"], "width": 2.5},
                 fill="tozeroy",
                 fillcolor="rgba(52,211,153,0.10)",
-                hovertemplate="<b>%{x}</b><br>Portfolio equity: %{y:,.2f}<extra></extra>",
+                hovertemplate=(
+                    "<b>%{x}</b><br>Portfolio equity: "
+                    + (currency_symbol if currency_symbol == "$" else "KSh ")
+                    + "%{y:,.2f}<extra></extra>"
+                ),
             )
         )
         figure.add_hline(
@@ -415,10 +432,14 @@ def main() -> None:
             },
             yaxis={
                 "tickformat": ",.2f",
+                "tickprefix": "$" if currency_symbol == "$" else "KSh ",
                 "gridcolor": THEME_COLORS["border"],
                 "zerolinecolor": THEME_COLORS["violet"],
                 "tickfont": {"color": THEME_COLORS["secondary"]},
-                "title": {"text": "Portfolio equity (capital units)", "font": {"color": THEME_COLORS["secondary"]}},
+                "title": {
+                    "text": f"Portfolio equity ({currency_code} capital units)",
+                    "font": {"color": THEME_COLORS["secondary"]},
+                },
             },
             xaxis={
                 "gridcolor": THEME_COLORS["border"],
@@ -430,7 +451,7 @@ def main() -> None:
         st.subheader("Equity Curve")
         st.caption(
             f"Equity Curve ? {tooltip('equity_curve')} "
-            "The horizontal reference is Initial capital (non-percentage capital units)."
+            f"The horizontal reference is Initial capital ({currency_code} capital units)."
         )
         st.plotly_chart(figure, use_container_width=True)
     st.subheader("Simulated trade log")
@@ -448,12 +469,12 @@ def main() -> None:
             "exit_time": st.column_config.TextColumn("exit_time", help=tooltip("exit_time")),
             "side": st.column_config.TextColumn("side", help="LONG entry or exit side (non-percentage label)."),
             "quantity": st.column_config.NumberColumn("quantity", help=tooltip("quantity"), format="%.4f"),
-            "entry_price": st.column_config.NumberColumn("entry_price", help=tooltip("entry_price"), format="$%.4f"),
-            "exit_price": st.column_config.NumberColumn("exit_price", help=tooltip("exit_price"), format="$%.4f"),
-            "commission": st.column_config.NumberColumn("commission", help=tooltip("commission_field"), format="$%.4f"),
-            "profit_loss": st.column_config.NumberColumn("profit_loss", help=tooltip("pnl"), format="$%.4f"),
-            "pnl": st.column_config.NumberColumn("pnl", help=tooltip("pnl"), format="$%.4f"),
-            "pnl_net": st.column_config.NumberColumn("pnl_net", help=tooltip("pnl_net"), format="$%.4f"),
+            "entry_price": st.column_config.NumberColumn("entry_price", help=tooltip("entry_price"), format=trade_currency_format),
+            "exit_price": st.column_config.NumberColumn("exit_price", help=tooltip("exit_price"), format=trade_currency_format),
+            "commission": st.column_config.NumberColumn("commission", help=tooltip("commission_field"), format=trade_currency_format),
+            "profit_loss": st.column_config.NumberColumn("profit_loss", help=tooltip("pnl"), format=trade_currency_format),
+            "pnl": st.column_config.NumberColumn("pnl", help=tooltip("pnl"), format=trade_currency_format),
+            "pnl_net": st.column_config.NumberColumn("pnl_net", help=tooltip("pnl_net"), format=trade_currency_format),
             "status": st.column_config.TextColumn("status", help="Trade lifecycle status (non-percentage label)."),
             "bar_length": st.column_config.NumberColumn("bar_length", help=tooltip("bar_length"), format="%d"),
         },
@@ -465,6 +486,8 @@ def main() -> None:
         cleaning_actions=cleaning_notes,
         commission_percent=commission_percent,
         slippage_percent=slippage_percent,
+        currency_code=currency_code,
+        currency_symbol=currency_symbol,
     )
     st.subheader("Post-Trade & Risk Audit Report")
     st.markdown(report)

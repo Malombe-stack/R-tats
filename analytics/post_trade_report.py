@@ -12,6 +12,17 @@ def _number(value: Any, digits: int = 2) -> str:
         return "N/A"
 
 
+def _money(value: Any, currency_code: str, currency_symbol: str, digits: int = 2) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if number != number or number in (float("inf"), float("-inf")):
+        return "N/A"
+    separator = "" if currency_symbol == "$" else " "
+    return f"{currency_symbol}{separator}{number:,.{digits}f} ({currency_code})"
+
+
 def _closed_trades(trades: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return [trade for trade in trades if str(trade.get("status", "Closed")).lower() in {"closed", "completed"}]
 
@@ -56,6 +67,8 @@ def generate_post_trade_risk_report(
     cleaning_actions: Iterable[str] = (),
     commission_percent: float = 0.0,
     slippage_percent: float = 0.0,
+    currency_code: str = "USD",
+    currency_symbol: str = "$",
 ) -> str:
     """Generate an audit report without changing simulation data."""
     trades = _closed_trades(result.trades)
@@ -94,19 +107,19 @@ def generate_post_trade_risk_report(
         "## Run Parameters",
         f"- Commission: **{commission_percent:.2f}%** (percentage; applied per execution).",
         f"- Slippage: **{slippage_percent:.2f}%** (percentage; simulated execution friction).",
-        f"- Initial capital: **{_number(result.initial_cash)}** (non-percentage capital units).",
-        f"- Total net profit/loss: **{_number(total_net)}** (non-percentage capital units).",
+        f"- Initial capital: **{_money(result.initial_cash, currency_code, currency_symbol)}** (non-percentage capital units).",
+        f"- Total net profit/loss: **{_money(total_net, currency_code, currency_symbol)}** (non-percentage capital units).",
         "",
         "## What Worked",
         f"- {len(winning)} profitable trade(s) from {len(trades)} completed trade(s).",
-        f"- Total net PnL after commission and slippage: **{_number(total_net)}**.",
+        f"- Total net PnL after commission and slippage: **{_money(total_net, currency_code, currency_symbol)}**.",
         f"- Average holding period: **{average_bars:.2f} bar(s)**.",
     ]
     if strongest is not None:
         lines.append(
             f"- Strongest trade: **{strongest.get('entry_time', 'N/A')} to "
             f"{strongest.get('exit_time', 'N/A')}**, net PnL "
-            f"**{_number(strongest.get('pnl_net', strongest.get('profit_loss', 0)))}** "
+            f"**{_money(strongest.get('pnl_net', strongest.get('profit_loss', 0)), currency_code, currency_symbol)}** "
             f"on {_number(strongest.get('quantity', 0), 2)} unit(s)."
         )
     else:
@@ -123,7 +136,7 @@ def generate_post_trade_risk_report(
         lines.append(
             f"- Weakest completed trade: **{weakest.get('entry_time', 'N/A')} to "
             f"{weakest.get('exit_time', 'N/A')}**, net PnL "
-            f"**{_number(weakest.get('pnl_net', weakest.get('profit_loss', 0)))}**."
+            f"**{_money(weakest.get('pnl_net', weakest.get('profit_loss', 0)), currency_code, currency_symbol)}**."
         )
     drawdown = metrics.get("max_drawdown")
     lines.append(f"- Peak-to-trough maximum drawdown: **{_number(drawdown)}%**.")
@@ -151,10 +164,10 @@ def generate_post_trade_risk_report(
                 "| LONG entry / closed exit "
                 f"| {trade.get('entry_time', 'N/A')} | {trade.get('exit_time', 'N/A')} "
                 f"| {_number(trade.get('quantity', 0), 4)} "
-                f"| {_number(trade.get('entry_price', 0), 4)} "
-                f"| {_number(trade.get('exit_price', 0), 4)} "
-                f"| {_number(trade.get('commission', 0), 4)} "
-                f"| {_number(trade.get('pnl_net', trade.get('profit_loss', 0)), 4)} "
+                f"| {_money(trade.get('entry_price', 0), currency_code, currency_symbol, 4)} "
+                f"| {_money(trade.get('exit_price', 0), currency_code, currency_symbol, 4)} "
+                f"| {_money(trade.get('commission', 0), currency_code, currency_symbol, 4)} "
+                f"| {_money(trade.get('pnl_net', trade.get('profit_loss', 0)), currency_code, currency_symbol, 4)} "
                 f"| {trade.get('status', 'Closed')} |"
             )
     else:

@@ -7,7 +7,7 @@ HELP = {
     "upload": "Upload OHLCV CSV data. Fields are percentages/non-percentages as labeled.",
     "dataset": "Dataset: a non-percentage historical data source containing dated OHLCV bars.",
     "strategy": "Strategy: SMA, EMA, or RSI determines entry/exit signals; it does not change KPI formulas.",
-    "initial_capital": "Initial capital (non-percentage): starting simulated portfolio currency/capital units.",
+    "initial_capital": "Initial capital (non-percentage): starting simulated portfolio currency/capital units; NSE uses KES/KSh and US markets use USD/$.",
     "commission": "Commission (%) (percentage): execution cost deducted for buys and sells.",
     "slippage": "Slippage (%) (percentage): simulated adverse execution price impact.",
     "position_size": "Position size (%) (percentage): cash percentage allocated to an eligible buy.",
@@ -35,12 +35,12 @@ HELP = {
         "and closes them; it does not execute SHORT trades. Quantity is the number of "
         "shares or units bought and is not a percentage."
     ),
-    "commission_field": "commission (non-percentage currency amount): total execution commission for a trade.",
+    "commission_field": "commission (non-percentage currency amount): total execution commission for a trade in the active market currency.",
     "entry_time": "entry_time (non-percentage timestamp): date the LONG position opened.",
     "exit_time": "exit_time (non-percentage timestamp): date the position closed.",
     "quantity": "quantity (non-percentage share/unit count): number of shares or units bought or traded.",
-    "entry_price": "entry_price (non-percentage currency/price): execution price at entry.",
-    "exit_price": "exit_price (non-percentage currency/price): execution price at exit.",
+    "entry_price": "entry_price (non-percentage currency/price): execution price at entry in the active market currency.",
+    "exit_price": "exit_price (non-percentage currency/price): execution price at exit in the active market currency.",
 }
 
 
