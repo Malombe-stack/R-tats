@@ -422,8 +422,9 @@ def main() -> None:
     st.subheader("Simulated trade log")
     st.caption(
         "Trade log fields are non-percentage values. "
-        "entry/exit time is a date; quantity is shares; prices and PnL fields are capital units."
+        "entry/exit time is a date; quantity is shares/units; prices and PnL fields are capital units."
     )
+    st.caption(f"? Execution scope: {tooltip('long_only')}")
     trade_frame = _styled_trade_log(result.trades)
     st.dataframe(
         trade_frame,

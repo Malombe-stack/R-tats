@@ -83,6 +83,10 @@ def generate_post_trade_risk_report(
     total_net = sum(float(trade.get("pnl_net", trade.get("profit_loss", 0))) for trade in trades)
     blocked = _risk_rejections(result.orders)
     flats = _flat_periods(result.equity_curve)
+    short_trades = sum(
+        1 for trade in trades
+        if "short" in str(trade.get("side", "")).lower()
+    )
 
     lines = [
         "# Post-Trade & Risk Audit Report",
@@ -113,6 +117,7 @@ def generate_post_trade_risk_report(
         "## What Didn't",
         f"- Losing trades: **{len(losing)}**.",
         f"- Low-margin trades (net PnL between 0 and 0.1% of initial capital): **{len(low_margin)}**.",
+        f"- SHORT trades: **{short_trades}**. The R-TATS execution engine is long-only (`LONG` entries and closes); no SHORT positions are opened.",
     ])
     if weakest is not None:
         lines.append(

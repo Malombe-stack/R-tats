@@ -30,6 +30,7 @@ HELP = {
     "pnl_net": "pnl_net (non-percentage profit/loss amount): PnL after commission; used for winning/losing classification.",
     "bar_length": "bar_length (non-percentage integer count): holding duration in bars.",
     "risk_checks": "Risk checks: blocked/rejected orders by capital, sizing, margin, or broker constraints.",
+    "long_only": "Long-only execution (non-percentage scope): R-TATS opens LONG positions and closes them; it does not execute SHORT trades.",
     "commission_field": "commission (non-percentage currency amount): total execution commission for a trade.",
     "entry_time": "entry_time (non-percentage timestamp): date the LONG position opened.",
     "exit_time": "exit_time (non-percentage timestamp): date the position closed.",

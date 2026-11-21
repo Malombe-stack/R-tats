@@ -44,6 +44,7 @@ def test_percentage_and_non_percentage_definitions_are_explicit() -> None:
     assert "Win Rate (%)" in tooltip("win_rate")
     assert "Completed Trades (non-percentage integer count)" in tooltip("completed_trades")
     assert "shares or units bought or traded" in tooltip("quantity")
+    assert "does not execute SHORT trades" in tooltip("long_only")
 
 
 def test_midnight_plum_theme_semantic_colors_are_configured() -> None:

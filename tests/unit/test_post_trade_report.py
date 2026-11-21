@@ -67,6 +67,8 @@ def test_report_states_no_risk_rejections() -> None:
     assert "`0 orders blocked by risk checks`" in report
     assert "No executed trades" in report
     assert "no auto-cleaning actions" in report
+    assert "SHORT trades: **0**" in report
+    assert "long-only" in report
 
 
 def test_report_flags_high_commission_stress() -> None:
