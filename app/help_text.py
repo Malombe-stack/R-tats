@@ -30,7 +30,11 @@ HELP = {
     "pnl_net": "pnl_net (non-percentage profit/loss amount): PnL after commission; used for winning/losing classification.",
     "bar_length": "bar_length (non-percentage integer count): holding duration in bars.",
     "risk_checks": "Risk checks: blocked/rejected orders by capital, sizing, margin, or broker constraints.",
-    "long_only": "Long-only execution (non-percentage scope): R-TATS opens LONG positions and closes them; it does not execute SHORT trades.",
+    "long_only": (
+        "Long-only execution (non-percentage scope/count): R-TATS opens LONG positions "
+        "and closes them; it does not execute SHORT trades. Quantity is the number of "
+        "shares or units bought and is not a percentage."
+    ),
     "commission_field": "commission (non-percentage currency amount): total execution commission for a trade.",
     "entry_time": "entry_time (non-percentage timestamp): date the LONG position opened.",
     "exit_time": "exit_time (non-percentage timestamp): date the position closed.",
@@ -41,5 +45,12 @@ HELP = {
 
 
 def tooltip(name: str) -> str:
-    """Return the exact interface definition for a named term."""
-    return HELP[name]
+    """Return a known definition or a safe, labeled fallback for UI metadata."""
+    if name in HELP:
+        return HELP[name]
+    readable_name = str(name).replace("_", " ").strip()
+    label = readable_name.title() if readable_name else "This item"
+    return (
+        f"{label} (non-percentage by default if unit type is unknown): "
+        "additional information is not currently available."
+    )

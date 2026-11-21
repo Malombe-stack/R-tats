@@ -1,6 +1,7 @@
 """Tests for stress-cost execution and percentage/non-percentage help metadata."""
 
 import math
+import ast
 from pathlib import Path
 
 from app.help_text import HELP, tooltip
@@ -62,3 +63,36 @@ def test_midnight_plum_theme_semantic_colors_are_configured() -> None:
     assert 'primaryColor = "#A855F7"' in config
     assert 'backgroundColor = "#13101D"' in config
     assert 'secondaryBackgroundColor = "#1C172B"' in config
+
+
+def test_long_only_and_unknown_tooltips_are_safe() -> None:
+    long_only = tooltip("long_only")
+    assert "long-only" in long_only.lower()
+    assert "quantity" in long_only.lower()
+    assert "shares or units" in long_only.lower()
+    assert "not a percentage" in long_only.lower()
+
+    fallback = tooltip("unregistered_future_term")
+    assert "Unregistered Future Term" in fallback
+    assert "additional information is not currently available" in fallback
+
+
+def test_all_literal_app_tooltip_keys_exist() -> None:
+    app_dir = Path(__file__).parents[2] / "app"
+    missing: set[str] = set()
+    for source_path in app_dir.glob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if not isinstance(function, ast.Name) or function.id != "tooltip":
+                continue
+            if not node.args:
+                continue
+            argument = node.args[0]
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                if argument.value not in HELP:
+                    missing.add(argument.value)
+
+    assert not missing
