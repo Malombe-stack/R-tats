@@ -500,6 +500,8 @@ def main() -> None:
     if not should_run:
         st.info("Choose a dataset and configuration, then run the simulation.")
         return
+    report_source_count = 0
+    report_usable_count = 0
     try:
         if uploaded is not None:
             cleaning = normalize_cleaning_result(
@@ -536,9 +538,13 @@ def main() -> None:
                 instrument="",
                 cleaning_notes=cleaning_notes,
             )
+            report_source_count = _safe_cleaning_count(cleaning.source_row_count)
+            report_usable_count = _safe_cleaning_count(metadata.row_count)
         else:
             data, metadata = _load_bundled_cached(str(selected_path), instrument)
             cleaning_notes = normalize_cleaning_notes(metadata.cleaning_notes)
+            report_source_count = _safe_cleaning_count(metadata.row_count)
+            report_usable_count = _safe_cleaning_count(metadata.row_count)
         result = _run_backtest_cached(
             data,
             strategy,
@@ -549,7 +555,7 @@ def main() -> None:
             position_size_pct=position_size_pct,
         )
         currency_source = (
-            uploaded.name if uploaded is not None
+            uploaded_name if uploaded is not None
             else str(selected_path)
         )
         currency_code, currency_symbol = resolve_market_currency(
@@ -663,6 +669,14 @@ def main() -> None:
         slippage_percent=slippage_percent,
         currency_code=currency_code,
         currency_symbol=currency_symbol,
+        dataset_label=(
+            uploaded_name
+            if uploaded is not None
+            else str(selected_path)
+        ),
+        strategy_name=str(strategy),
+        source_row_count=report_source_count,
+        usable_row_count=report_usable_count,
     )
     st.subheader("Post-Trade & Risk Audit Report")
     st.markdown(report)

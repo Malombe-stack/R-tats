@@ -134,3 +134,39 @@ def test_pdf_report_export_returns_a_pdf_document() -> None:
 
     assert pdf_report.startswith(b"%PDF-")
     assert len(pdf_report) > 500
+
+
+def test_report_includes_methodology_reliability_and_downloadable_formats() -> None:
+    result = BacktestResult(
+        strategy="sma",
+        initial_cash=10000.0,
+        final_value=10100.0,
+        equity_curve=(
+            {"timestamp": "2024-01-01", "value": 10000.0},
+            {"timestamp": "2024-01-02", "value": 10100.0},
+        ),
+        orders=(None,),
+        trades=(None,),
+    )
+    report = generate_post_trade_risk_report(
+        result,
+        {"max_drawdown": 1.0},
+        cleaning_actions=("Dropped 2 invalid rows",),
+        dataset_label="NSE_SAMPLE_DAILY.csv",
+        strategy_name="SMA",
+        source_row_count=102,
+        usable_row_count=100,
+        currency_code="KES",
+        currency_symbol="KSh",
+    )
+
+    assert "How the Analysis Came to This Result" in report
+    assert "Data Reliability" in report
+    assert "What Worked" in report
+    assert "What Didn't" in report
+    assert "Source rows: **102**" in report
+    assert "Usable rows passed into the simulation: **100**" in report
+    assert "Reliability assessment: **High**" in report
+    assert "KSh" in report
+    assert report_to_txt(report).startswith("Post-Trade & Risk Audit Report")
+    assert report_to_pdf(report).startswith(b"%PDF-")
