@@ -50,10 +50,17 @@ def _risk_rejections(orders: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 def _flat_periods(equity_curve: Sequence[dict[str, Any]]) -> list[tuple[str, str, int]]:
     if not equity_curve:
         return []
+    equity_curve = tuple(
+        row for row in equity_curve
+        if isinstance(row, dict)
+    )
+    if not equity_curve:
+        return []
     periods: list[tuple[str, str, int]] = []
-    start = str(equity_curve[0].get("timestamp", equity_curve[0].get("date", "")))
-    previous = str(equity_curve[0].get("timestamp", equity_curve[0].get("date", "")))
-    previous_value = _finite_float(equity_curve[0].get("value", equity_curve[0].get("portfolio_value", 0)))
+    first = equity_curve[0] if isinstance(equity_curve[0], dict) else {}
+    start = str(first.get("timestamp", first.get("date", "")))
+    previous = str(first.get("timestamp", first.get("date", "")))
+    previous_value = _finite_float(first.get("value", first.get("portfolio_value", 0)))
     length = 1
     for row in equity_curve[1:]:
         date = str(row.get("timestamp", row.get("date", "")))
@@ -83,12 +90,41 @@ def generate_post_trade_risk_report(
     currency_symbol: str = "$",
 ) -> str:
     """Generate an audit report without changing simulation data."""
-    trades = _closed_trades(result.trades)
+    result_trades = getattr(result, "trades", ()) or ()
+    result_orders = getattr(result, "orders", ()) or ()
+    result_equity = getattr(result, "equity_curve", ()) or ()
+    try:
+        initial_cash = _finite_float(getattr(result, "initial_cash", 0.0))
+    except (AttributeError, TypeError):
+        initial_cash = 0.0
+    if not isinstance(metrics, dict):
+        metrics = {}
+    if not isinstance(cleaning_actions, (list, tuple, set)):
+        cleaning_actions = () if cleaning_actions is None else (str(cleaning_actions),)
+    try:
+        commission_percent = float(commission_percent)
+    except (TypeError, ValueError):
+        commission_percent = 0.0
+    if not isfinite(commission_percent):
+        commission_percent = 0.0
+    try:
+        slippage_percent = float(slippage_percent)
+    except (TypeError, ValueError):
+        slippage_percent = 0.0
+    if not isfinite(slippage_percent):
+        slippage_percent = 0.0
+    currency_code = str(currency_code or "USD")
+    currency_symbol = str(currency_symbol or "$")
+
+    trades = _closed_trades(
+        trade for trade in result_trades
+        if isinstance(trade, dict)
+    )
     winning = [trade for trade in trades if _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) > 0]
     losing = [trade for trade in trades if _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) < 0]
     low_margin = [
         trade for trade in trades
-        if 0 <= _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) <= result.initial_cash * 0.001
+        if 0 <= _finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) <= initial_cash * 0.001
     ]
 
     strongest = max(
@@ -106,8 +142,11 @@ def generate_post_trade_risk_report(
         if trades else 0.0
     )
     total_net = sum(_finite_float(trade.get("pnl_net", trade.get("profit_loss", 0))) for trade in trades)
-    blocked = _risk_rejections(result.orders)
-    flats = _flat_periods(result.equity_curve)
+    blocked = _risk_rejections(
+        order for order in result_orders
+        if isinstance(order, dict)
+    )
+    flats = _flat_periods(result_equity)
     short_trades = sum(
         1 for trade in trades
         if "short" in str(trade.get("side", "")).lower()

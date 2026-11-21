@@ -8,6 +8,8 @@ import re
 
 def report_to_txt(report_markdown: str) -> str:
     """Convert the report structure to clean plain text."""
+    if not isinstance(report_markdown, str):
+        report_markdown = "" if report_markdown is None else str(report_markdown)
     lines: list[str] = []
     for raw_line in report_markdown.splitlines():
         line = raw_line.strip()
@@ -35,6 +37,8 @@ def report_to_txt(report_markdown: str) -> str:
 
 def report_to_pdf(report_markdown: str) -> bytes:
     """Render the report as a clean PDF."""
+    if not isinstance(report_markdown, str):
+        report_markdown = "" if report_markdown is None else str(report_markdown)
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import getSampleStyleSheet

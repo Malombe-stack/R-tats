@@ -577,7 +577,7 @@ def main() -> None:
 
     report = generate_post_trade_risk_report(
         result,
-        metrics,
+        metrics if isinstance(metrics, dict) else {},
         cleaning_actions=cleaning_notes,
         commission_percent=commission_percent,
         slippage_percent=slippage_percent,

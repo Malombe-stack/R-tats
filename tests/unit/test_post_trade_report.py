@@ -134,3 +134,31 @@ def test_pdf_report_export_returns_a_pdf_document() -> None:
 
     assert pdf_report.startswith(b"%PDF-")
     assert len(pdf_report) > 500
+
+
+def test_report_handles_none_collections_and_non_numeric_values() -> None:
+    result = BacktestResult(
+        strategy="sma",
+        initial_cash=float("nan"),
+        final_value=float("inf"),
+        equity_curve=(None,),
+        orders=(None, "bad"),
+        trades=(None, "bad", {"status": "Closed", "pnl_net": float("inf")}),
+    )
+
+    report = generate_post_trade_risk_report(
+        result,
+        None,
+        cleaning_actions=None,
+        commission_percent=None,
+        slippage_percent="bad",
+        currency_code=None,
+        currency_symbol=None,
+    )
+    txt_report = report_to_txt(report)
+    pdf_report = report_to_pdf(report)
+
+    assert "Post-Trade & Risk Audit Report" in report
+    assert "0 orders blocked by risk checks" in report
+    assert isinstance(txt_report, str)
+    assert pdf_report.startswith(b"%PDF-")
